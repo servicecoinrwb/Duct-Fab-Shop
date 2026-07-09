@@ -93,6 +93,7 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
   <button id="tabT" class="on">Transition</button>
   <button id="tabP">Plenum</button>
   <button id="tabR">Return Drop</button>
+  <button id="tabS">Sq → Round</button>
 </div>
 
 <div class="wrap">
@@ -151,6 +152,29 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
         <div class="field"><label>Height</label><input id="p_h" class="dim" value="36" inputmode="decimal"></div>
       </div>
       <div class="hint">4 side panels + top cap. Cap gets a fold-down flange on all four edges.</div>
+    </fieldset>
+  </div>
+
+  <div id="formS" style="display:none">
+    <fieldset>
+      <legend>Bottom Opening (square)</legend>
+      <div class="grid">
+        <div class="field"><label>Width</label><input id="s_w" class="dim" value="20" inputmode="decimal"></div>
+        <div class="field"><label>Depth</label><input id="s_d" class="dim" value="20" inputmode="decimal"></div>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Top Opening (round)</legend>
+      <div class="grid3">
+        <div class="field"><label>Diameter</label><input id="s_dia" class="dim" value="14" inputmode="decimal"></div>
+        <div class="field"><label>Offset W · + = left</label><input id="s_ox" class="dim" value="0" inputmode="decimal"></div>
+        <div class="field"><label>Offset D · + = back</label><input id="s_oz" class="dim" value="0" inputmode="decimal"></div>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Rise</legend>
+      <div class="field"><label>Height</label><input id="s_h" class="dim" value="10" inputmode="decimal"></div>
+      <div class="hint">One wrap-around pattern, seam at the front corner. Radial dashed lines are your gore/brake lines — hit each one lightly to roll the corner cones. Top edge allowance forms the collar connection.</div>
     </fieldset>
   </div>
 
@@ -341,6 +365,119 @@ function plenumPanels(w,d,h){
   ];
 }
 
+/* ---------------- square-to-round ---------------- */
+function sqRoundModel(w,d,dia,h,ox,oz,N){
+  const r=dia/2, m=N/4;
+  const R=[V(w/2,0,-d/2),V(w/2,0,d/2),V(-w/2,0,d/2),V(-w/2,0,-d/2)];
+  const P=[];
+  for(let j=0;j<=N;j++){const a=j*2*Math.PI/N; P.push(V(ox+r*Math.sin(a),h,oz-r*Math.cos(a)));}
+  const tris=[];
+  const cp2=new Array(N+1), cr2=new Array(5);
+  cr2[0]={x:0,y:0};
+  cp2[0]={x:0,y:dist(R[0],P[0])};
+  let A3=R[0],B3=P[0],A2=cr2[0],B2=cp2[0],prev=null;
+  function placeThird(V3){
+    const d1=dist(A3,V3), d2=dist(B3,V3);
+    const ex=B2.x-A2.x, ey=B2.y-A2.y, L=Math.hypot(ex,ey);
+    if(L===0) return null;
+    const a=(d1*d1-d2*d2+L*L)/(2*L);
+    let hs=d1*d1-a*a; if(hs<0) hs=0;
+    const hh=Math.sqrt(hs);
+    const ux=ex/L, uy=ey/L;
+    const bx=A2.x+a*ux, by=A2.y+a*uy;
+    const c1={x:bx-hh*uy, y:by+hh*ux}, c2={x:bx+hh*uy, y:by-hh*ux};
+    const side=pt=>(B2.x-A2.x)*(pt.y-A2.y)-(B2.y-A2.y)*(pt.x-A2.x);
+    if(prev===null) return side(c1)>=0?c1:c2;
+    const sPrev=side(prev);
+    return side(c1)*sPrev<=0?c1:c2;
+  }
+  for(let k=0;k<4;k++){
+    for(let j=k*m;j<(k+1)*m;j++){
+      const V3=P[j+1];
+      const v2=placeThird(V3);
+      if(!v2) return null;
+      tris.push([A3,B3,V3]);
+      cp2[j+1]=v2;
+      prev={x:B2.x,y:B2.y};
+      B3=V3; B2=v2;
+    }
+    const Rn3=R[(k+1)%4];
+    const v2=placeThird(Rn3);
+    if(!v2) return null;
+    tris.push([A3,B3,Rn3]);
+    cr2[k+1]=v2;
+    prev={x:A2.x,y:A2.y};
+    A3=Rn3; A2=v2;
+  }
+  return {tris, cp2, cr2, N, dims:{w,d,dia,h,ox,oz}};
+}
+
+function svgSqRound(mdl, aTop, aBot, aLap){
+  const {cp2,cr2,N,dims}=mdl;
+  const P=cp2.map(p=>({x:p.x,y:-p.y}));
+  const C=cr2.map(p=>({x:p.x,y:-p.y}));
+  const allBase=[...P,...C];
+  const cx0=allBase.reduce((s2,p)=>s2+p.x,0)/allBase.length;
+  const cy0=allBase.reduce((s2,p)=>s2+p.y,0)/allBase.length;
+  function outward(a,b){
+    const ex=b.x-a.x, ey=b.y-a.y, L=Math.hypot(ex,ey)||1;
+    let nx=ey/L, ny=-ex/L;
+    const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    if((mx-cx0)*nx+(my-cy0)*ny<0){nx=-nx;ny=-ny;}
+    return {nx,ny};
+  }
+  const extra=[];
+  const s=[];
+  if(aTop>0){
+    const off=P.map((p,j)=>{
+      const a=P[Math.max(0,j-1)], b=P[Math.min(N,j+1)];
+      const {nx,ny}=outward(a,b);
+      return {x:p.x+nx*aTop, y:p.y+ny*aTop};
+    });
+    extra.push(...off);
+    s.push(`<path d="M ${P.map(p=>p.x+' '+p.y).join(' L ')} L ${off.slice().reverse().map(p=>p.x+' '+p.y).join(' L ')} Z" fill="rgba(181,81,47,0.14)" stroke="none"/>`);
+    s.push(`<path d="M ${off.map(p=>p.x+' '+p.y).join(' L ')}" fill="none" stroke="#16263f" stroke-width="0.09"/>`);
+    s.push(`<path d="M ${P.map(p=>p.x+' '+p.y).join(' L ')}" fill="none" stroke="#7a8ba3" stroke-width="0.06" stroke-dasharray="0.35 0.22"/>`);
+  }
+  function band(a,b,amt){
+    if(amt<=0) return;
+    const {nx,ny}=outward(a,b);
+    const a2={x:a.x+nx*amt,y:a.y+ny*amt}, b2={x:b.x+nx*amt,y:b.y+ny*amt};
+    extra.push(a2,b2);
+    s.push(`<path d="M ${a.x} ${a.y} L ${a2.x} ${a2.y} L ${b2.x} ${b2.y} L ${b.x} ${b.y} Z" fill="rgba(181,81,47,0.14)" stroke="none"/>`);
+    s.push(`<path d="M ${a.x} ${a.y} L ${a2.x} ${a2.y} L ${b2.x} ${b2.y} L ${b.x} ${b.y}" fill="none" stroke="#16263f" stroke-width="0.09"/>`);
+    s.push(`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#7a8ba3" stroke-width="0.06" stroke-dasharray="0.35 0.22"/>`);
+  }
+  for(let k=0;k<4;k++) band(C[k],C[k+1],aBot);
+  band(C[0],P[0],aLap);
+  const boundary=[C[0],P[0]];
+  for(let j=1;j<=N;j++) boundary.push(P[j]);
+  boundary.push(C[4],C[3],C[2],C[1]);
+  s.push(`<path d="M ${boundary.map(p=>p.x+' '+p.y).join(' L ')} Z" fill="rgba(111,183,227,0.10)" stroke="#16263f" stroke-width="0.1"/>`);
+  const m=N/4;
+  for(let k=0;k<4;k++){
+    for(let j=k*m;j<=(k+1)*m;j++){
+      s.push(`<line x1="${C[k].x}" y1="${C[k].y}" x2="${P[j].x}" y2="${P[j].y}" stroke="#5a8ab0" stroke-width="0.045" stroke-dasharray="0.3 0.3"/>`);
+    }
+  }
+  function eLabel(a,b,txt2){
+    const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    const {nx,ny}=outward(a,b);
+    let ang=Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI;
+    if(ang>90||ang<-90) ang+=180;
+    s.push(`<text x="${mx+nx*0.8}" y="${my+ny*0.8+0.2}" font-size="0.6" font-weight="600" fill="#16263f" text-anchor="middle" transform="rotate(${ang} ${mx+nx*0.8} ${my+ny*0.8})">${txt2}</text>`);
+  }
+  const bl=[dims.d,dims.w,dims.d,dims.w];
+  for(let k=0;k<4;k++) eLabel(C[k],C[k+1],fmtIn(bl[k]));
+  eLabel(C[0],P[0],'SEAM '+fmtIn(Math.hypot(P[0].x-C[0].x,P[0].y-C[0].y)));
+  const all=[...allBase,...extra];
+  const bMinX=Math.min(...all.map(p=>p.x)), bMaxX=Math.max(...all.map(p=>p.x));
+  const bMinY=Math.min(...all.map(p=>p.y)), bMaxY=Math.max(...all.map(p=>p.y));
+  const pad=1.6;
+  const head=`<svg viewBox="${bMinX-pad} ${bMinY-pad} ${bMaxX-bMinX+2*pad} ${bMaxY-bMinY+2*pad}" xmlns="http://www.w3.org/2000/svg" font-family="Barlow, sans-serif">`;
+  return {svg:head+s.join('')+'</svg>', bw:bMaxX-bMinX, bh:bMaxY-bMinY};
+}
+
 /* ---------------- SVG cut sheet ---------------- */
 function svgPanel(dev, opts){
   // opts: {aBottom,aTop,aLeft,aRight, isCap, capFlange}
@@ -445,7 +582,7 @@ function svgPanel(dev, opts){
 /* ---------------- app state / rebuild ---------------- */
 let mode='T';
 const $=id=>document.getElementById(id);
-const inputs=['t_w1','t_d1','t_w2','t_d2','t_h','t_ox','t_oz','p_w','p_d','p_h','r_w','r_d','r_h','a_top','a_bot','a_pkt','a_flg','conn','seam','ga','jobtag','stock'];
+const inputs=['t_w1','t_d1','t_w2','t_d2','t_h','t_ox','t_oz','p_w','p_d','p_h','r_w','r_d','r_h','s_w','s_d','s_dia','s_h','s_ox','s_oz','a_top','a_bot','a_pkt','a_flg','conn','seam','ga','jobtag','stock'];
 
 /* ---------------- autosave ---------------- */
 function saveState(){
@@ -543,6 +680,41 @@ function rebuild(){
     // top cap
     panels.push({name:'TOP CAP', q:[{x:0,y:0},{x:w,y:0},{x:w,y:d},{x:0,y:d}], edges:{bottom:w,right:d,top:w,left:d}, planar:true, isCap:true});
     model={plenum:{w,d,h}};
+  } else if(mode==='S'){
+    const w=parseIn($('s_w').value), d=parseIn($('s_d').value);
+    const dia=parseIn($('s_dia').value), h=parseIn($('s_h').value);
+    const ox=parseIn($('s_ox').value)||0, oz=parseIn($('s_oz').value)||0;
+    if([w,d,dia,h].some(v=>!(v>0))){warn('Enter all dimensions (must be greater than 0).'); render3D(null); return;}
+    if(dia>Math.min(w,d)) warn('Round is larger than the square opening on at least one side — check the fit.');
+    const mdl=sqRoundModel(w,d,dia,h,ox,oz,24);
+    if(!mdl){warn('Geometry error — check dimensions.'); render3D(null); return;}
+    const pat=svgSqRound(mdl, aTop, aBot, aFlg);
+    const blanks=[{w:pat.bw, h:pat.bh, name:'SQ→ROUND'}];
+    const div=document.createElement('div');
+    div.className='sheet';
+    div.innerHTML=`
+      <div class="tb"><div class="co">MECHANICAL TEMP · FAB TICKET</div><div class="pc">SQUARE TO ROUND — ONE PIECE</div></div>
+      <div class="meta">
+        <span><b>Job:</b> ${meta.job}</span><span><b>${meta.ga}</b></span>
+        <span><b>${fmtIn(w)} × ${fmtIn(d)} → Ø${fmtIn(dia)}</b></span>
+        <span><b>Blank:</b> ${fmtIn(pat.bw)} × ${fmtIn(pat.bh)}</span>
+        <span><b>Stretch-out:</b> ${fmtIn(Math.PI*dia)}</span>
+        <span>${meta.date}</span>
+      </div>
+      ${pat.svg}
+      <div class="legendrow">
+        <span><span class="sw"></span>Cut</span>
+        <span><span class="sw fold"></span>Fold</span>
+        <span><span class="sw" style="border-top:2px dashed #5a8ab0;"></span>Gore / brake lines</span>
+        <span><span style="display:inline-block;width:14px;height:9px;background:rgba(181,81,47,0.18);border:1px solid #b5512f;vertical-align:middle;margin-right:4px;"></span>Allowance</span>
+        <span style="margin-left:auto">Top collar ${fmtIn(aTop)} · bot flange ${fmtIn(aBot)} · seam lap ${fmtIn(aFlg)}</span>
+      </div>`;
+    sheets.appendChild(div);
+    renderNest(blanks, meta);
+    $('sheetCount').textContent='1 piece';
+    render3D({tris:mdl.tris, h});
+    saveState();
+    return;
   } else {
     const w=parseIn($('r_w').value), d=parseIn($('r_d').value), h=parseIn($('r_h').value);
     if([w,d,h].some(v=>!(v>0))){warn('Enter all dimensions (must be greater than 0).'); render3D(null); return;}
@@ -722,7 +894,13 @@ function render3D(model){
     verts.push(p0.x,p0.y,p0.z, p2.x,p2.y,p2.z, p3.x,p3.y,p3.z);
   }
   let maxDim=20;
-  if(model.panels){
+  if(model.tris){
+    model.tris.forEach(t=>verts.push(t[0].x,t[0].y,t[0].z, t[1].x,t[1].y,t[1].z, t[2].x,t[2].y,t[2].z));
+    let mx=0;
+    model.tris.forEach(t=>t.forEach(p=>mx=Math.max(mx,Math.abs(p.x),Math.abs(p.z))));
+    maxDim=Math.max(mx*2, model.h||10);
+    target.set(0,(model.h||10)/2,0);
+  } else if(model.panels){
     model.panels.forEach(p=>quad(p.pts[0],p.pts[1],p.pts[2],p.pts[3]));
     const hs=model.t[0].y;
     target.set(0,hs/2,0);
@@ -772,7 +950,7 @@ function addLabel(text,x,y,z){
 /* ---------------- wiring ---------------- */
 function setMode(m, doRebuild=true){
   mode=m;
-  const map={T:['tabT','formT'],P:['tabP','formP'],R:['tabR','formR']};
+  const map={T:['tabT','formT'],P:['tabP','formP'],R:['tabR','formR'],S:['tabS','formS']};
   Object.entries(map).forEach(([k,[tb,fm]])=>{
     $(tb).classList.toggle('on', k===m);
     $(fm).style.display = k===m ? '' : 'none';
@@ -782,6 +960,7 @@ function setMode(m, doRebuild=true){
 $('tabT').addEventListener('click',()=>setMode('T'));
 $('tabP').addEventListener('click',()=>setMode('P'));
 $('tabR').addEventListener('click',()=>setMode('R'));
+$('tabS').addEventListener('click',()=>setMode('S'));
 let deb=null;
 inputs.forEach(id=>{
   const el=$(id);
