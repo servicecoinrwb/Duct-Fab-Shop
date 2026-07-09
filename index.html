@@ -11,7 +11,7 @@
 :root{
   --navy:#16263f; --sky:#2f86c4; --skysoft:#e3f0fa; --cream:#fdfcf8; --rust:#b5512f;
   --bg:#f0f3f7; --panel:#ffffff; --ink:#16263f; --dim:#5a6b80; --line:#d5dde6;
-}   
+}
 *{box-sizing:border-box; margin:0; padding:0;}
 html,body{background:var(--bg); color:var(--ink); font-family:'Barlow',system-ui,sans-serif; -webkit-text-size-adjust:100%;}
 body{padding-bottom:90px;}
@@ -35,6 +35,9 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
 .field input:disabled{background:var(--skysoft); color:var(--dim);}
 .field input:focus,.field select:focus{outline:2px solid var(--sky); border-color:var(--sky);}
 .hint{font-size:11px; color:var(--dim); margin-top:8px; line-height:1.4;}
+.chips{display:flex; gap:6px; flex-wrap:wrap;}
+.chips button{flex:1 1 auto; min-width:70px; padding:9px 6px; font-family:'Barlow Condensed'; font-size:14px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; background:#fff; color:var(--dim); border:1px solid var(--line); border-radius:20px; cursor:pointer;}
+.chips button.on{background:var(--sky); color:#fff; border-color:var(--sky);}
 .warn{display:none; margin:0 auto 12px; padding:10px 12px; border:1px solid var(--rust); background:#fbeee8; border-radius:8px; color:#8a3a1e; font-size:13px; max-width:760px;}
 .warn.show{display:block;}
 @media (max-width:792px){.warn{margin:0 16px 12px;}}
@@ -110,22 +113,20 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
     </fieldset>
     <fieldset>
       <legend>Top Position</legend>
-      <div class="grid">
-        <div class="field"><label>Width (left–right)</label>
-          <select id="flushW">
-            <option value="center">Centered</option>
-            <option value="right">Flush right (right side flat)</option>
-            <option value="left">Flush left (left side flat)</option>
-            <option value="custom">Custom offset</option>
-          </select>
+      <div class="field"><label>Left – Right</label>
+        <div class="chips" id="chipsW">
+          <button data-v="center" class="on">Centered</button>
+          <button data-v="left">Flush Left</button>
+          <button data-v="right">Flush Right</button>
+          <button data-v="custom">Custom</button>
         </div>
-        <div class="field"><label>Depth (front–back)</label>
-          <select id="flushD">
-            <option value="center">Centered</option>
-            <option value="back">Flush back (back flat)</option>
-            <option value="front">Flush front (front flat)</option>
-            <option value="custom">Custom offset</option>
-          </select>
+      </div>
+      <div class="field" style="margin-top:10px"><label>Front – Back</label>
+        <div class="chips" id="chipsD">
+          <button data-v="center" class="on">Centered</button>
+          <button data-v="front">Flush Front</button>
+          <button data-v="back">Flush Back</button>
+          <button data-v="custom">Custom</button>
         </div>
       </div>
     </fieldset>
@@ -431,7 +432,7 @@ function rebuild(){
     const w2=parseIn($('t_w2').value), d2=parseIn($('t_d2').value);
     const h=parseIn($('t_h').value);
     // flush-side auto offsets: flush offset = (big - small) / 2
-    const fw=$('flushW').value, fd=$('flushD').value;
+    const fw=flushW, fd=flushD;
     if(fw!=='custom' && w1>0 && w2>0){
       const o = fw==='right' ? (w1-w2)/2 : fw==='left' ? -(w1-w2)/2 : 0;
       $('t_ox').value=fmtPlain(o);
@@ -502,9 +503,10 @@ function init3D(){
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
   renderer.setSize(vp.clientWidth, vp.clientHeight);
   vp.appendChild(renderer.domElement);
-  scene.add(new THREE.AmbientLight(0xffffff,0.55));
-  const dl=new THREE.DirectionalLight(0xffffff,0.9); dl.position.set(40,80,50); scene.add(dl);
-  const dl2=new THREE.DirectionalLight(0x6fb7e3,0.35); dl2.position.set(-50,20,-40); scene.add(dl2);
+  scene.add(new THREE.HemisphereLight(0xffffff,0xd8e2ea,0.85));
+  scene.add(new THREE.AmbientLight(0xffffff,0.45));
+  const dl=new THREE.DirectionalLight(0xffffff,0.7); dl.position.set(40,80,50); scene.add(dl);
+  const dl2=new THREE.DirectionalLight(0xffffff,0.35); dl2.position.set(-50,20,-40); scene.add(dl2);
   const grid=new THREE.GridHelper(120,24,0xb8c6d4,0xdde5ec);
   grid.position.y=-0.01; scene.add(grid);
   animate();
@@ -546,6 +548,8 @@ function animate(){
 function render3D(model){
   if(mesh){scene.remove(mesh); mesh.geometry.dispose(); mesh=null;}
   if(edgesObj){scene.remove(edgesObj); edgesObj=null;}
+  labelObjs.forEach(o=>{scene.remove(o); if(o.material.map) o.material.map.dispose(); o.material.dispose();});
+  labelObjs=[];
   if(!model) return;
   let verts=[];
   function quad(p0,p1,p2,p3){
@@ -572,11 +576,32 @@ function render3D(model){
   const geo=new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(verts,3));
   geo.computeVertexNormals();
-  const mat=new THREE.MeshStandardMaterial({color:0x8ba3b8, metalness:0.7, roughness:0.4, side:THREE.DoubleSide, transparent:true, opacity:0.95});
+  const mat=new THREE.MeshStandardMaterial({color:0xd3dfe9, metalness:0.15, roughness:0.5, side:THREE.DoubleSide});
   mesh=new THREE.Mesh(geo,mat);
   scene.add(mesh);
   edgesObj=new THREE.LineSegments(new THREE.EdgesGeometry(geo,12), new THREE.LineBasicMaterial({color:0x16263f}));
   scene.add(edgesObj);
+  // axis labels around the base
+  const half=maxDim/2;
+  addLabel('FRONT', 0, 0, -(half+4));
+  addLabel('BACK',  0, 0,  half+4);
+  addLabel('RIGHT', half+4, 0, 0);
+  addLabel('LEFT', -(half+4), 0, 0);
+}
+let labelObjs=[];
+function addLabel(text,x,y,z){
+  const c=document.createElement('canvas'); c.width=256; c.height=96;
+  const g=c.getContext('2d');
+  g.fillStyle='#2f86c4'; g.font='600 52px Barlow Condensed, sans-serif';
+  g.textAlign='center'; g.textBaseline='middle';
+  g.fillText(text,128,48);
+  const tex=new THREE.CanvasTexture(c);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex, transparent:true, depthTest:false}));
+  const s=Math.max(8, radius*0.16);
+  sp.scale.set(s, s*0.375, 1);
+  sp.position.set(x, y+1.5, z);
+  scene.add(sp);
+  labelObjs.push(sp);
 }
 
 /* ---------------- wiring ---------------- */
@@ -587,8 +612,18 @@ inputs.forEach(id=>{
   const el=$(id);
   el.addEventListener('input',()=>{clearTimeout(deb); deb=setTimeout(rebuild,250);});
 });
-$('flushW').addEventListener('change',rebuild);
-$('flushD').addEventListener('change',rebuild);
+let flushW='center', flushD='center';
+function wireChips(id, set){
+  $(id).addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    $(id).querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    set(b.dataset.v);
+    rebuild();
+  });
+}
+wireChips('chipsW', v=>flushW=v);
+wireChips('chipsD', v=>flushD=v);
 $('btnPrint').addEventListener('click',()=>window.print());
 
 /* ---------------- quick pad ---------------- */
