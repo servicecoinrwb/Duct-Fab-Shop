@@ -10,7 +10,7 @@
 <style>
 :root{
   --navy:#16263f; --navy2:#0b2545; --sky:#6fb7e3; --cream:#f7f4ec; --rust:#b5512f;
-  --ink:#dbe7f2; --dim:#8aa3bd; --line:#24405f; --panel:#0f1e33;    
+  --ink:#dbe7f2; --dim:#8aa3bd; --line:#24405f; --panel:#0f1e33;
 }
 *{box-sizing:border-box; margin:0; padding:0;}
 html,body{background:var(--navy2); color:var(--ink); font-family:'Barlow',system-ui,sans-serif; -webkit-text-size-adjust:100%;}
@@ -57,6 +57,11 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
 .sheet .legendrow .sw.bend{border-top:2px dashed var(--rust);}
 .sheet .legendrow .sw.fold{border-top:2px dashed #7a8ba3;}
 
+#qpad{display:none; position:fixed; left:0; right:0; bottom:calc(64px + env(safe-area-inset-bottom)); z-index:20; gap:6px; padding:8px 10px; background:rgba(11,37,69,.97); border-top:1px solid var(--sky); overflow-x:auto; -webkit-overflow-scrolling:touch;}
+#qpad.show{display:flex;}
+#qpad button{flex:0 0 auto; min-width:46px; padding:10px 8px; font-size:17px; font-weight:600; background:var(--panel); color:var(--sky); border:1px solid var(--line); border-radius:8px;}
+#qpad button.stepdown,#qpad button.stepup{color:#fff; background:var(--navy); border-color:var(--sky); min-width:54px;}
+#qpad .div{flex:0 0 1px; background:var(--line); margin:2px 4px;}
 .bar{position:fixed; left:0; right:0; bottom:0; display:flex; gap:10px; padding:12px 16px calc(12px + env(safe-area-inset-bottom)); background:rgba(8,20,38,.92); backdrop-filter:blur(6px); border-top:1px solid var(--line);}
 .bar button{flex:1; padding:14px 0; font-family:'Barlow Condensed'; font-size:17px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; border-radius:8px; border:none; cursor:pointer;}
 #btnPrint{background:var(--sky); color:var(--navy2);}
@@ -88,25 +93,46 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
     <fieldset>
       <legend>Bottom Opening (coil)</legend>
       <div class="grid">
-        <div class="field"><label>Width</label><input id="t_w1" value="20" inputmode="text"></div>
-        <div class="field"><label>Depth</label><input id="t_d1" value="20" inputmode="text"></div>
+        <div class="field"><label>Width</label><input id="t_w1" class="dim" value="20" inputmode="decimal"></div>
+        <div class="field"><label>Depth</label><input id="t_d1" class="dim" value="20" inputmode="decimal"></div>
       </div>
     </fieldset>
     <fieldset>
       <legend>Top Opening (duct / plenum)</legend>
       <div class="grid">
-        <div class="field"><label>Width</label><input id="t_w2" value="14" inputmode="text"></div>
-        <div class="field"><label>Depth</label><input id="t_d2" value="14" inputmode="text"></div>
+        <div class="field"><label>Width</label><input id="t_w2" class="dim" value="14" inputmode="decimal"></div>
+        <div class="field"><label>Depth</label><input id="t_d2" class="dim" value="14" inputmode="decimal"></div>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Top Position</legend>
+      <div class="grid">
+        <div class="field"><label>Width (left–right)</label>
+          <select id="flushW">
+            <option value="center">Centered</option>
+            <option value="right">Flush right (right side flat)</option>
+            <option value="left">Flush left (left side flat)</option>
+            <option value="custom">Custom offset</option>
+          </select>
+        </div>
+        <div class="field"><label>Depth (front–back)</label>
+          <select id="flushD">
+            <option value="center">Centered</option>
+            <option value="back">Flush back (back flat)</option>
+            <option value="front">Flush front (front flat)</option>
+            <option value="custom">Custom offset</option>
+          </select>
+        </div>
       </div>
     </fieldset>
     <fieldset>
       <legend>Rise &amp; Offset</legend>
       <div class="grid3">
-        <div class="field"><label>Height</label><input id="t_h" value="10" inputmode="text"></div>
-        <div class="field"><label>Offset W →</label><input id="t_ox" value="0" inputmode="text"></div>
-        <div class="field"><label>Offset D ↓</label><input id="t_oz" value="0" inputmode="text"></div>
+        <div class="field"><label>Height</label><input id="t_h" class="dim" value="10" inputmode="decimal"></div>
+        <div class="field"><label>Offset W →</label><input id="t_ox" class="dim" value="0" inputmode="decimal"></div>
+        <div class="field"><label>Offset D ↓</label><input id="t_oz" class="dim" value="0" inputmode="decimal"></div>
       </div>
-      <div class="hint">Offset shifts the top opening off center. Enter negative values to shift the other way. Fractions OK: 16 1/2, 16-1/2, 16.5</div>
+      <div class="hint">Offsets fill in automatically from Top Position — pick Custom to type your own. Fractions OK: 16 1/2, 16-1/2, 16.5</div>
     </fieldset>
   </div>
 
@@ -114,9 +140,9 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
     <fieldset>
       <legend>Plenum Box</legend>
       <div class="grid3">
-        <div class="field"><label>Width</label><input id="p_w" value="20" inputmode="text"></div>
-        <div class="field"><label>Depth</label><input id="p_d" value="20" inputmode="text"></div>
-        <div class="field"><label>Height</label><input id="p_h" value="36" inputmode="text"></div>
+        <div class="field"><label>Width</label><input id="p_w" class="dim" value="20" inputmode="decimal"></div>
+        <div class="field"><label>Depth</label><input id="p_d" class="dim" value="20" inputmode="decimal"></div>
+        <div class="field"><label>Height</label><input id="p_h" class="dim" value="36" inputmode="decimal"></div>
       </div>
       <div class="hint">4 side panels + top cap. Cap gets a fold-down flange on all four edges.</div>
     </fieldset>
@@ -141,7 +167,7 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
       </div>
     </div>
     <div class="grid" style="margin-top:10px">
-      <div class="field"><label>Top / bottom allow.</label><input id="a_conn" value="1" inputmode="text"></div>
+      <div class="field"><label>Top / bottom allow.</label><input id="a_conn" class="dim" value="1" inputmode="decimal"></div>
       <div class="field"><label>Gauge</label>
         <select id="ga">
           <option>26 ga</option><option selected>24 ga</option><option>22 ga</option><option>20 ga</option>
@@ -149,8 +175,8 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
       </div>
     </div>
     <div class="grid" style="margin-top:10px">
-      <div class="field"><label>Pocket edge allow.</label><input id="a_pkt" value="1 1/8" inputmode="text"></div>
-      <div class="field"><label>Flange edge allow.</label><input id="a_flg" value="5/16" inputmode="text"></div>
+      <div class="field"><label>Pocket edge allow.</label><input id="a_pkt" class="dim" value="1 1/8" inputmode="decimal"></div>
+      <div class="field"><label>Flange edge allow.</label><input id="a_flg" class="dim" value="5/16" inputmode="decimal"></div>
     </div>
     <div class="field" style="margin-top:10px"><label>Job / tag</label><input id="jobtag" placeholder="e.g. Canton RTU-2 supply plenum"></div>
   </fieldset>
@@ -163,6 +189,20 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
 
 <div class="sheets-head"><h2>Cut Sheets</h2><div class="count" id="sheetCount"></div></div>
 <div id="sheets"></div>
+
+<div id="qpad">
+  <button class="stepdown" data-step="-1">−1</button>
+  <button class="stepup" data-step="1">+1</button>
+  <span class="div"></span>
+  <button data-frac="0.125">⅛</button>
+  <button data-frac="0.25">¼</button>
+  <button data-frac="0.375">⅜</button>
+  <button data-frac="0.5">½</button>
+  <button data-frac="0.625">⅝</button>
+  <button data-frac="0.75">¾</button>
+  <button data-frac="0.875">⅞</button>
+  <button data-frac="0">.0</button>
+</div>
 
 <div class="bar">
   <button id="btnPrint">Print Cut Sheets</button>
@@ -194,6 +234,11 @@ function fmtIn(v){
   if(f){let n=f,d=16; while(n%2===0){n/=2; d/=2;} fs=n+'/'+d;}
   let out = w&&fs ? w+' '+fs : (fs||String(w));
   return (neg?'-':'')+out+'"';
+}
+
+function fmtPlain(v){
+  const s=fmtIn(Math.round(v*16)/16);
+  return s.replace('"','');
 }
 
 /* ---------------- vector helpers ---------------- */
@@ -381,6 +426,18 @@ function rebuild(){
     const w1=parseIn($('t_w1').value), d1=parseIn($('t_d1').value);
     const w2=parseIn($('t_w2').value), d2=parseIn($('t_d2').value);
     const h=parseIn($('t_h').value);
+    // flush-side auto offsets: flush offset = (big - small) / 2
+    const fw=$('flushW').value, fd=$('flushD').value;
+    if(fw!=='custom' && w1>0 && w2>0){
+      const o = fw==='right' ? (w1-w2)/2 : fw==='left' ? -(w1-w2)/2 : 0;
+      $('t_ox').value=fmtPlain(o);
+    }
+    if(fd!=='custom' && d1>0 && d2>0){
+      const o = fd==='back' ? (d1-d2)/2 : fd==='front' ? -(d1-d2)/2 : 0;
+      $('t_oz').value=fmtPlain(o);
+    }
+    $('t_ox').disabled = fw!=='custom';
+    $('t_oz').disabled = fd!=='custom';
     const ox=parseIn($('t_ox').value)||0, oz=parseIn($('t_oz').value)||0;
     if([w1,d1,w2,d2,h].some(v=>!(v>0))){warn('Enter all dimensions (must be greater than 0).'); render3D(null); return;}
     if(h < Math.max(Math.abs(ox),Math.abs(oz))*0.4 && (ox||oz)) warn('Steep offset for this height — check that the fitting is buildable before cutting.');
@@ -526,7 +583,42 @@ inputs.forEach(id=>{
   const el=$(id);
   el.addEventListener('input',()=>{clearTimeout(deb); deb=setTimeout(rebuild,250);});
 });
+$('flushW').addEventListener('change',rebuild);
+$('flushD').addEventListener('change',rebuild);
 $('btnPrint').addEventListener('click',()=>window.print());
+
+/* ---------------- quick pad ---------------- */
+const qpad=$('qpad');
+let activeDim=null;
+document.addEventListener('focusin',e=>{
+  if(e.target.classList && e.target.classList.contains('dim') && !e.target.disabled){
+    activeDim=e.target;
+    qpad.classList.add('show');
+  }
+});
+document.addEventListener('focusout',e=>{
+  setTimeout(()=>{
+    const f=document.activeElement;
+    if(!f || !(f.classList && f.classList.contains('dim'))) qpad.classList.remove('show');
+  },120);
+});
+qpad.addEventListener('pointerdown',e=>{
+  e.preventDefault(); // keep keyboard focus on the input
+  const b=e.target.closest('button');
+  if(!b || !activeDim) return;
+  let v=parseIn(activeDim.value);
+  if(isNaN(v)) v=0;
+  if(b.dataset.step!==undefined){
+    v+=+b.dataset.step;
+  } else {
+    const frac=+b.dataset.frac;
+    const neg=v<0; v=Math.abs(v);
+    v=Math.floor(v)+frac;
+    if(neg) v=-v;
+  }
+  activeDim.value=fmtPlain(v);
+  clearTimeout(deb); deb=setTimeout(rebuild,200);
+});
 
 init3D();
 rebuild();
