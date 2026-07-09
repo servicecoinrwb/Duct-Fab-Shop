@@ -172,12 +172,16 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
       </div>
     </div>
     <div class="grid" style="margin-top:10px">
-      <div class="field"><label>Top / bottom allow.</label><input id="a_conn" class="dim" value="1" inputmode="decimal"></div>
+      <div class="field"><label>Top edge (to duct)</label><input id="a_top" class="dim" value="1" inputmode="decimal"></div>
+      <div class="field"><label>Bottom flange (screw-down)</label><input id="a_bot" class="dim" value="5/16" inputmode="decimal"></div>
+    </div>
+    <div class="grid" style="margin-top:10px">
       <div class="field"><label>Gauge</label>
         <select id="ga">
           <option>26 ga</option><option selected>24 ga</option><option>22 ga</option><option>20 ga</option>
         </select>
       </div>
+      <div class="field"><label>&nbsp;</label></div>
     </div>
     <div class="grid" style="margin-top:10px">
       <div class="field"><label>Pocket edge allow.</label><input id="a_pkt" class="dim" value="1 1/8" inputmode="decimal"></div>
@@ -260,10 +264,10 @@ function transitionModel(w1,d1,w2,d2,h,ox,oz){
   const t=[V(ox-w2/2,h,oz-d2/2),V(ox+w2/2,h,oz-d2/2),V(ox+w2/2,h,oz+d2/2),V(ox-w2/2,h,oz+d2/2)];
   // panels: [bottomLeft, bottomRight, topRight, topLeft] with bottom edge first
   const panels=[
-    {name:'FRONT', pts:[b[0],b[1],t[1],t[0]]},
-    {name:'LEFT',  pts:[b[1],b[2],t[2],t[1]]},
-    {name:'BACK',  pts:[b[2],b[3],t[3],t[2]]},
-    {name:'RIGHT', pts:[b[3],b[0],t[0],t[3]]},
+    {name:'FRONT', role:'pocket', pts:[b[0],b[1],t[1],t[0]]},
+    {name:'LEFT',  role:'flange', pts:[b[1],b[2],t[2],t[1]]},
+    {name:'BACK',  role:'pocket', pts:[b[2],b[3],t[3],t[2]]},
+    {name:'RIGHT', role:'flange', pts:[b[3],b[0],t[0],t[3]]},
   ];
   return {b,t,panels};
 }
@@ -305,10 +309,10 @@ function developQuad(p){
 /* ---------------- plenum model ---------------- */
 function plenumPanels(w,d,h){
   return [
-    {name:'SIDE A (front)', q:[{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}], edges:{bottom:w,right:h,top:w,left:h}, planar:true},
-    {name:'SIDE B (right)', q:[{x:0,y:0},{x:d,y:0},{x:d,y:h},{x:0,y:h}], edges:{bottom:d,right:h,top:d,left:h}, planar:true},
-    {name:'SIDE C (back)',  q:[{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}], edges:{bottom:w,right:h,top:w,left:h}, planar:true},
-    {name:'SIDE D (left)',  q:[{x:0,y:0},{x:d,y:0},{x:d,y:h},{x:0,y:h}], edges:{bottom:d,right:h,top:d,left:h}, planar:true},
+    {name:'SIDE A (front)', role:'pocket', q:[{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}], edges:{bottom:w,right:h,top:w,left:h}, planar:true},
+    {name:'SIDE B (right)', role:'flange', q:[{x:0,y:0},{x:d,y:0},{x:d,y:h},{x:0,y:h}], edges:{bottom:d,right:h,top:d,left:h}, planar:true},
+    {name:'SIDE C (back)',  role:'pocket', q:[{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}], edges:{bottom:w,right:h,top:w,left:h}, planar:true},
+    {name:'SIDE D (left)',  role:'flange', q:[{x:0,y:0},{x:d,y:0},{x:d,y:h},{x:0,y:h}], edges:{bottom:d,right:h,top:d,left:h}, planar:true},
   ];
 }
 
@@ -345,11 +349,25 @@ function svgPanel(dev, opts){
   const W=maxX-minX, H=maxY-minY;
   const s=[];
   s.push(`<svg viewBox="${minX} ${minY} ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="Barlow, sans-serif">`);
-  // allowance strips (fold lines dashed grey, outer cut solid)
+  // allowance strips (tinted band, solid outer cut line, dashed fold line)
   strips.forEach(o=>{
     const p=o.s;
-    s.push(`<path d="M ${p[0].x} ${p[0].y} L ${p[3].x} ${p[3].y} L ${p[2].x} ${p[2].y} L ${p[1].x} ${p[1].y}" fill="none" stroke="#16263f" stroke-width="0.07"/>`);
+    s.push(`<path d="M ${p[0].x} ${p[0].y} L ${p[3].x} ${p[3].y} L ${p[2].x} ${p[2].y} L ${p[1].x} ${p[1].y} Z" fill="rgba(181,81,47,0.14)" stroke="none"/>`);
+    s.push(`<path d="M ${p[0].x} ${p[0].y} L ${p[3].x} ${p[3].y} L ${p[2].x} ${p[2].y} L ${p[1].x} ${p[1].y}" fill="none" stroke="#16263f" stroke-width="0.09"/>`);
     s.push(`<line x1="${p[0].x}" y1="${p[0].y}" x2="${p[1].x}" y2="${p[1].y}" stroke="#7a8ba3" stroke-width="0.06" stroke-dasharray="0.35 0.22"/>`);
+    // label the band with its width if there's room, else leader it just outside
+    const mx=(p[0].x+p[1].x+p[2].x+p[3].x)/4, my=(p[0].y+p[1].y+p[2].y+p[3].y)/4;
+    const ex=p[1].x-p[0].x, ey=p[1].y-p[0].y;
+    let ang=Math.atan2(ey,ex)*180/Math.PI;
+    if(ang>90||ang<-90) ang+=180;
+    if(o.amt>=0.7){
+      s.push(`<text x="${mx}" y="${my+0.18}" font-size="0.5" font-weight="600" fill="#8a3a1e" text-anchor="middle" transform="rotate(${ang} ${mx} ${my})">${fmtIn(o.amt)}</text>`);
+    } else {
+      const ox2=(p[2].x+p[3].x)/2-mx, oy2=(p[2].y+p[3].y)/2-my;
+      const L2=Math.hypot(ox2,oy2)||1;
+      const tx=mx+ox2/L2*0.75, ty=my+oy2/L2*0.75;
+      s.push(`<text x="${tx}" y="${ty+0.15}" font-size="0.45" font-weight="600" fill="#8a3a1e" text-anchor="middle" transform="rotate(${ang} ${tx} ${ty})">${fmtIn(o.amt)}</text>`);
+    }
   });
   // main outline
   s.push(`<path d="M ${pts.map(p=>p.x+' '+p.y).join(' L ')} Z" fill="rgba(111,183,227,0.10)" stroke="#16263f" stroke-width="0.1"/>`);
@@ -388,11 +406,12 @@ function svgPanel(dev, opts){
 /* ---------------- app state / rebuild ---------------- */
 let mode='T';
 const $=id=>document.getElementById(id);
-const inputs=['t_w1','t_d1','t_w2','t_d2','t_h','t_ox','t_oz','p_w','p_d','p_h','a_conn','a_pkt','a_flg','conn','seam','ga','jobtag'];
+const inputs=['t_w1','t_d1','t_w2','t_d2','t_h','t_ox','t_oz','p_w','p_d','p_h','a_top','a_bot','a_pkt','a_flg','conn','seam','ga','jobtag'];
 
 function connDefaults(){
   const c=$('conn').value;
-  $('a_conn').value = c==='raw' ? '0' : '1';
+  if(c==='raw'){$('a_top').value='0'; $('a_bot').value='0';}
+  else {$('a_top').value='1'; $('a_bot').value='5/16';}
 }
 $('conn').addEventListener('change',()=>{connDefaults(); rebuild();});
 $('seam').addEventListener('change',()=>{
@@ -413,7 +432,8 @@ let current3D=null;
 
 function rebuild(){
   warn('');
-  const aConn=parseIn($('a_conn').value)||0;
+  const aTop=parseIn($('a_top').value)||0;
+  const aBot=parseIn($('a_bot').value)||0;
   const aPkt=parseIn($('a_pkt').value)||0;
   const aFlg=parseIn($('a_flg').value)||0;
   const meta={
@@ -451,6 +471,7 @@ function rebuild(){
       const dev=developQuad(p.pts);
       if(!dev){warn('Geometry error on '+p.name+' panel — check dimensions.'); return;}
       dev.name=p.name;
+      dev.role=p.role;
       panels.push(dev);
     });
   } else {
@@ -465,14 +486,17 @@ function rebuild(){
 
   panels.forEach((dev,i)=>{
     const isCap=!!dev.isCap;
+    const sideAmt = dev.role==='pocket' ? aPkt : aFlg;
     const opts = isCap
       ? {aBottom:1,aTop:1,aLeft:1,aRight:1}
-      : {aBottom:aConn, aTop:aConn, aLeft:aPkt, aRight:aFlg};
+      : {aBottom:aBot, aTop:aTop, aLeft:sideAmt, aRight:sideAmt};
     const div=document.createElement('div');
     div.className='sheet';
     const edgeNote = isCap
       ? '1" fold-down flange all edges'
-      : `L edge ${fmtIn(aPkt)} pocket · R edge ${fmtIn(aFlg)} flange · top/bot ${fmtIn(aConn)}`;
+      : dev.role==='pocket'
+        ? `Pocket ${fmtIn(aPkt)} both side edges · top ${fmtIn(aTop)} · bot flange ${fmtIn(aBot)}`
+        : `Flange ${fmtIn(aFlg)} both side edges · top ${fmtIn(aTop)} · bot flange ${fmtIn(aBot)}`;
     div.innerHTML=`
       <div class="tb"><div class="co">MECHANICAL TEMP · FAB TICKET</div><div class="pc">PANEL ${i+1} — ${dev.name}</div></div>
       <div class="meta">
@@ -485,6 +509,7 @@ function rebuild(){
         <span><span class="sw"></span>Cut</span>
         <span><span class="sw fold"></span>Fold</span>
         <span><span class="sw bend"></span>Bend (brake on diagonal)</span>
+        <span><span style="display:inline-block;width:14px;height:9px;background:rgba(181,81,47,0.18);border:1px solid #b5512f;vertical-align:middle;margin-right:4px;"></span>Allowance</span>
         <span style="margin-left:auto">${edgeNote}</span>
       </div>`;
     sheets.appendChild(div);
