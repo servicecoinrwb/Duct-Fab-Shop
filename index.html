@@ -91,7 +91,8 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
 
 <div class="tabs">
   <button id="tabT" class="on">Transition</button>
-  <button id="tabP">Plenum Box</button>
+  <button id="tabP">Plenum</button>
+  <button id="tabR">Return Drop</button>
 </div>
 
 <div class="wrap">
@@ -152,6 +153,30 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
       <div class="hint">4 side panels + top cap. Cap gets a fold-down flange on all four edges.</div>
     </fieldset>
   </div>
+
+  <div id="formR" style="display:none">
+    <fieldset>
+      <legend>Return Air Drop</legend>
+      <div class="grid3">
+        <div class="field"><label>Width</label><input id="r_w" class="dim" value="20" inputmode="decimal"></div>
+        <div class="field"><label>Depth</label><input id="r_d" class="dim" value="8" inputmode="decimal"></div>
+        <div class="field"><label>Drop height</label><input id="r_h" class="dim" value="48" inputmode="decimal"></div>
+      </div>
+      <div class="hint">Open-ended rectangular drop — 4 side panels, no cap. Top edge connects to the return trunk / filter rack, bottom flange screws to the furnace cabinet.</div>
+    </fieldset>
+  </div>
+
+  <fieldset>
+    <legend>Stock Sheet</legend>
+    <div class="field"><label>Sheet size</label>
+      <select id="stock">
+        <option value="48x96" selected>4 × 8 (48 × 96)</option>
+        <option value="48x120">4 × 10 (48 × 120)</option>
+        <option value="36x96">3 × 8 (36 × 96)</option>
+        <option value="60x120">5 × 10 (60 × 120)</option>
+      </select>
+    </div>
+  </fieldset>
 
   <fieldset>
     <legend>Connections &amp; Seams</legend>
@@ -343,9 +368,13 @@ function svgPanel(dev, opts){
   // bounds
   let all=pts.slice();
   strips.forEach(o=>all=all.concat(o.s));
+  // blank size = bounding box of pattern + allowances (no dim margins)
+  const bMinX=Math.min(...all.map(p=>p.x)), bMaxX=Math.max(...all.map(p=>p.x));
+  const bMinY=Math.min(...all.map(p=>p.y)), bMaxY=Math.max(...all.map(p=>p.y));
+  const blankW=bMaxX-bMinX, blankH=bMaxY-bMinY;
   const pad=2.2; // inches of margin for dims
-  let minX=Math.min(...all.map(p=>p.x))-pad, maxX=Math.max(...all.map(p=>p.x))+pad;
-  let minY=Math.min(...all.map(p=>p.y))-pad, maxY=Math.max(...all.map(p=>p.y))+pad;
+  let minX=bMinX-pad, maxX=bMaxX+pad;
+  let minY=bMinY-pad, maxY=bMaxY+pad;
   const W=maxX-minX, H=maxY-minY;
   const s=[];
   s.push(`<svg viewBox="${minX} ${minY} ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="Barlow, sans-serif">`);
@@ -371,11 +400,19 @@ function svgPanel(dev, opts){
   });
   // main outline
   s.push(`<path d="M ${pts.map(p=>p.x+' '+p.y).join(' L ')} Z" fill="rgba(111,183,227,0.10)" stroke="#16263f" stroke-width="0.1"/>`);
-  // bend line on diagonal if not planar
+  // bend line on diagonal if not planar; cross break both diagonals if flat
   if(!dev.planar){
     s.push(`<line x1="${pts[0].x}" y1="${pts[0].y}" x2="${pts[2].x}" y2="${pts[2].y}" stroke="#b5512f" stroke-width="0.07" stroke-dasharray="0.5 0.3"/>`);
     const bl=dist({x:pts[0].x,y:pts[0].y,z:0},{x:pts[2].x,y:pts[2].y,z:0});
     s.push(txt((pts[0].x+pts[2].x)/2+0.3,(pts[0].y+pts[2].y)/2-0.2,'BEND · '+fmtIn(bl),0.55,'#b5512f'));
+  } else {
+    // cross break for stiffness — skip small panels that don't need it
+    const spanX=Math.max(...pts.map(p=>p.x))-Math.min(...pts.map(p=>p.x));
+    const spanY=Math.max(...pts.map(p=>p.y))-Math.min(...pts.map(p=>p.y));
+    if(Math.min(spanX,spanY)>=8){
+      s.push(`<line x1="${pts[0].x}" y1="${pts[0].y}" x2="${pts[2].x}" y2="${pts[2].y}" stroke="#5a8ab0" stroke-width="0.05" stroke-dasharray="0.28 0.28"/>`);
+      s.push(`<line x1="${pts[1].x}" y1="${pts[1].y}" x2="${pts[3].x}" y2="${pts[3].y}" stroke="#5a8ab0" stroke-width="0.05" stroke-dasharray="0.28 0.28"/>`);
+    }
   }
   // dimensions
   function dimLine(a,b,offset,label){
@@ -400,13 +437,38 @@ function svgPanel(dev, opts){
   dimLine(pts[1],pts[2],1.1+(edgeAmt[1]||0), fmtIn(dev.edges.right));
   dimLine(pts[3],pts[0],1.1+(edgeAmt[3]||0), fmtIn(dev.edges.left));
   s.push('</svg>');
-  return s.join('');
+  const _spanX=Math.max(...pts.map(p=>p.x))-Math.min(...pts.map(p=>p.x));
+  const _spanY=Math.max(...pts.map(p=>p.y))-Math.min(...pts.map(p=>p.y));
+  return {svg:s.join(''), bw:blankW, bh:blankH, xb:(dev.planar && Math.min(_spanX,_spanY)>=8)};
 }
 
 /* ---------------- app state / rebuild ---------------- */
 let mode='T';
 const $=id=>document.getElementById(id);
-const inputs=['t_w1','t_d1','t_w2','t_d2','t_h','t_ox','t_oz','p_w','p_d','p_h','a_top','a_bot','a_pkt','a_flg','conn','seam','ga','jobtag'];
+const inputs=['t_w1','t_d1','t_w2','t_d2','t_h','t_ox','t_oz','p_w','p_d','p_h','r_w','r_d','r_h','a_top','a_bot','a_pkt','a_flg','conn','seam','ga','jobtag','stock'];
+
+/* ---------------- autosave ---------------- */
+function saveState(){
+  try{
+    const st={mode, flushW, flushD, v:{}};
+    inputs.forEach(id=>st.v[id]=$(id).value);
+    localStorage.setItem('mtfab_state', JSON.stringify(st));
+  }catch(e){}
+}
+function restoreState(){
+  try{
+    const raw=localStorage.getItem('mtfab_state');
+    if(!raw) return;
+    const st=JSON.parse(raw);
+    inputs.forEach(id=>{ if(st.v && st.v[id]!==undefined) $(id).value=st.v[id]; });
+    flushW=st.flushW||'center'; flushD=st.flushD||'center';
+    ['chipsW','chipsD'].forEach((cid,k)=>{
+      const val=k===0?flushW:flushD;
+      $(cid).querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===val));
+    });
+    if(st.mode) setMode(st.mode, false);
+  }catch(e){}
+}
 
 function connDefaults(){
   const c=$('conn').value;
@@ -474,22 +536,29 @@ function rebuild(){
       dev.role=p.role;
       panels.push(dev);
     });
-  } else {
+  } else if(mode==='P'){
     const w=parseIn($('p_w').value), d=parseIn($('p_d').value), h=parseIn($('p_h').value);
     if([w,d,h].some(v=>!(v>0))){warn('Enter all dimensions (must be greater than 0).'); render3D(null); return;}
     panels=plenumPanels(w,d,h);
-    panels.forEach((p,i)=>p.name=p.name);
     // top cap
     panels.push({name:'TOP CAP', q:[{x:0,y:0},{x:w,y:0},{x:w,y:d},{x:0,y:d}], edges:{bottom:w,right:d,top:w,left:d}, planar:true, isCap:true});
     model={plenum:{w,d,h}};
+  } else {
+    const w=parseIn($('r_w').value), d=parseIn($('r_d').value), h=parseIn($('r_h').value);
+    if([w,d,h].some(v=>!(v>0))){warn('Enter all dimensions (must be greater than 0).'); render3D(null); return;}
+    panels=plenumPanels(w,d,h); // same 4 sides, no cap
+    model={drop:{w,d,h}};
   }
 
+  const blanks=[];
   panels.forEach((dev,i)=>{
     const isCap=!!dev.isCap;
     const sideAmt = dev.role==='pocket' ? aPkt : aFlg;
     const opts = isCap
       ? {aBottom:1,aTop:1,aLeft:1,aRight:1}
       : {aBottom:aBot, aTop:aTop, aLeft:sideAmt, aRight:sideAmt};
+    const pat=svgPanel(dev,opts);
+    blanks.push({w:pat.bw, h:pat.bh, name:dev.name});
     const div=document.createElement('div');
     div.className='sheet';
     const edgeNote = isCap
@@ -497,25 +566,96 @@ function rebuild(){
       : dev.role==='pocket'
         ? `Pocket ${fmtIn(aPkt)} both side edges · top ${fmtIn(aTop)} · bot flange ${fmtIn(aBot)}`
         : `Flange ${fmtIn(aFlg)} both side edges · top ${fmtIn(aTop)} · bot flange ${fmtIn(aBot)}`;
+    const hasAllow = isCap || aBot>0 || aTop>0 || sideAmt>0;
     div.innerHTML=`
       <div class="tb"><div class="co">MECHANICAL TEMP · FAB TICKET</div><div class="pc">PANEL ${i+1} — ${dev.name}</div></div>
       <div class="meta">
         <span><b>Job:</b> ${meta.job}</span><span><b>${meta.ga}</b></span>
         <span><b>Conn:</b> ${meta.conn}</span><span><b>Seam:</b> ${meta.seam}</span>
+        <span><b>Blank:</b> ${fmtIn(pat.bw)} × ${fmtIn(pat.bh)}</span>
         <span>${meta.date}</span>
       </div>
-      ${svgPanel(dev,opts)}
+      ${pat.svg}
       <div class="legendrow">
         <span><span class="sw"></span>Cut</span>
-        <span><span class="sw fold"></span>Fold</span>
-        <span><span class="sw bend"></span>Bend (brake on diagonal)</span>
-        <span><span style="display:inline-block;width:14px;height:9px;background:rgba(181,81,47,0.18);border:1px solid #b5512f;vertical-align:middle;margin-right:4px;"></span>Allowance</span>
+        ${hasAllow?'<span><span class="sw fold"></span>Fold</span>':''}
+        ${dev.planar===false?'<span><span class="sw bend"></span>Bend (brake on diagonal)</span>':''}
+        ${pat.xb?'<span><span class="sw" style="border-top:2px dashed #5a8ab0;"></span>Cross break</span>':''}
+        ${hasAllow?'<span><span style="display:inline-block;width:14px;height:9px;background:rgba(181,81,47,0.18);border:1px solid #b5512f;vertical-align:middle;margin-right:4px;"></span>Allowance</span>':''}
         <span style="margin-left:auto">${edgeNote}</span>
       </div>`;
     sheets.appendChild(div);
   });
+  renderNest(blanks, meta);
   $('sheetCount').textContent=panels.length+' pieces';
   render3D(model);
+  saveState();
+}
+
+/* ---------------- nesting (shelf packing) ---------------- */
+function renderNest(blanks, meta){
+  const dims=$('stock').value.split('x').map(Number);
+  const SW=Math.max(dims[0],dims[1]), SH=Math.min(dims[0],dims[1]); // landscape: long side across
+  const GAP=0.25;
+  // sort tallest first, rotate any blank taller than the sheet if that helps
+  const items=blanks.map(b=>{
+    let w=b.w,h=b.h,rot=false;
+    if(h>SW && w<=SW){ [w,h]=[h,w]; rot=true; } // stand long pieces along the sheet length
+    return {w,h,rot,name:b.name};
+  }).sort((a,b)=>b.h-a.h);
+  const sheetsArr=[];
+  function newSheet(){ const s={shelves:[],used:0}; sheetsArr.push(s); return s; }
+  let cur=newSheet();
+  items.forEach(it=>{
+    if(it.w>Math.max(SW,SH)||it.h>Math.max(SW,SH)){ it.oversize=true; return; }
+    let placed=false;
+    for(const sh of cur.shelves){
+      // try as-is then rotated within the shelf
+      for(const [w,h,r] of [[it.w,it.h,it.rot],[it.h,it.w,!it.rot]]){
+        if(h<=sh.h && sh.x+w<=SW){ sh.items.push({x:sh.x,y:sh.y,w,h,r,name:it.name}); sh.x+=w+GAP; placed=true; break; }
+      }
+      if(placed) break;
+    }
+    if(!placed){
+      let w=it.w,h=it.h,r=it.rot;
+      if(w>SW && h<=SW){ [w,h]=[h,w]; r=!r; }
+      const y=cur.used;
+      if(y+h>SH){ cur=newSheet(); }
+      const yy=cur.used;
+      if(yy+h<=SH && w<=SW){
+        const sh={y:yy,h,x:w+GAP,items:[{x:0,y:yy,w,h,r,name:it.name}]};
+        cur.shelves.push(sh); cur.used=yy+h+GAP;
+      } else it.oversize=true;
+    }
+  });
+  const oversize=items.filter(i=>i.oversize);
+  const totalArea=items.filter(i=>!i.oversize).reduce((s,i)=>s+i.w*i.h,0);
+  const stockArea=sheetsArr.length*SW*SH;
+  const waste=stockArea?Math.max(0,100*(1-totalArea/stockArea)):0;
+  sheetsArr.forEach((s,si)=>{
+    const div=document.createElement('div');
+    div.className='sheet';
+    let svg=[`<svg viewBox="-1 -1 ${SW+2} ${SH+2}" xmlns="http://www.w3.org/2000/svg" font-family="Barlow, sans-serif">`];
+    svg.push(`<rect x="0" y="0" width="${SW}" height="${SH}" fill="#fff" stroke="#16263f" stroke-width="0.25"/>`);
+    s.shelves.forEach(sh=>sh.items.forEach(it=>{
+      svg.push(`<rect x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" fill="rgba(47,134,196,0.12)" stroke="#2f86c4" stroke-width="0.15"/>`);
+      const cx=it.x+it.w/2, cy=it.y+it.h/2;
+      const rot=it.h>it.w*1.6?` transform="rotate(-90 ${cx} ${cy})"`:'';
+      svg.push(`<text x="${cx}" y="${cy}" font-size="${Math.min(2.4,Math.max(1.1,Math.min(it.w,it.h)*0.16))}" font-weight="600" fill="#16263f" text-anchor="middle" dominant-baseline="middle"${rot}>${it.name}${it.r?' ↻':''}</text>`);
+      svg.push(`<text x="${cx}" y="${cy+2.6}" font-size="1.1" fill="#5a6b80" text-anchor="middle"${rot}>${fmtIn(it.w)} × ${fmtIn(it.h)}</text>`);
+    }));
+    svg.push('</svg>');
+    div.innerHTML=`
+      <div class="tb"><div class="co">MECHANICAL TEMP · NEST LAYOUT</div><div class="pc">SHEET ${si+1} of ${sheetsArr.length} — ${SW}" × ${SH}"</div></div>
+      <div class="meta">
+        <span><b>Job:</b> ${meta.job}</span><span><b>${meta.ga}</b></span>
+        <span><b>Waste (all sheets):</b> ${waste.toFixed(0)}%</span>
+        <span>Blanks are bounding rectangles · ${GAP}" gap</span>
+        ${oversize.length?`<span style="color:#b5512f"><b>Won't fit stock:</b> ${oversize.map(o=>o.name).join(', ')}</span>`:''}
+      </div>
+      ${svg.join('')}`;
+    $('sheets').appendChild(div);
+  });
 }
 
 /* ---------------- Three.js preview ---------------- */
@@ -587,13 +727,13 @@ function render3D(model){
     const hs=model.t[0].y;
     target.set(0,hs/2,0);
     maxDim=Math.max(dist(model.b[0],model.b[2]), dist(model.t[0],model.t[2]), hs);
-  } else if(model.plenum){
-    const {w,d,h}=model.plenum;
+  } else if(model.plenum || model.drop){
+    const {w,d,h}=model.plenum||model.drop;
     const b=[V(-w/2,0,-d/2),V(w/2,0,-d/2),V(w/2,0,d/2),V(-w/2,0,d/2)];
     const t=[V(-w/2,h,-d/2),V(w/2,h,-d/2),V(w/2,h,d/2),V(-w/2,h,d/2)];
     quad(b[0],b[1],t[1],t[0]); quad(b[1],b[2],t[2],t[1]);
     quad(b[2],b[3],t[3],t[2]); quad(b[3],b[0],t[0],t[3]);
-    quad(t[3],t[2],t[1],t[0]); // cap
+    if(model.plenum) quad(t[3],t[2],t[1],t[0]); // cap only on plenum
     target.set(0,h/2,0);
     maxDim=Math.max(Math.hypot(w,d),h);
   }
@@ -630,8 +770,18 @@ function addLabel(text,x,y,z){
 }
 
 /* ---------------- wiring ---------------- */
-$('tabT').addEventListener('click',()=>{mode='T';$('tabT').classList.add('on');$('tabP').classList.remove('on');$('formT').style.display='';$('formP').style.display='none';rebuild();});
-$('tabP').addEventListener('click',()=>{mode='P';$('tabP').classList.add('on');$('tabT').classList.remove('on');$('formP').style.display='';$('formT').style.display='none';rebuild();});
+function setMode(m, doRebuild=true){
+  mode=m;
+  const map={T:['tabT','formT'],P:['tabP','formP'],R:['tabR','formR']};
+  Object.entries(map).forEach(([k,[tb,fm]])=>{
+    $(tb).classList.toggle('on', k===m);
+    $(fm).style.display = k===m ? '' : 'none';
+  });
+  if(doRebuild) rebuild();
+}
+$('tabT').addEventListener('click',()=>setMode('T'));
+$('tabP').addEventListener('click',()=>setMode('P'));
+$('tabR').addEventListener('click',()=>setMode('R'));
 let deb=null;
 inputs.forEach(id=>{
   const el=$(id);
@@ -685,6 +835,7 @@ qpad.addEventListener('pointerdown',e=>{
 });
 
 init3D();
+restoreState();
 rebuild();
 </script>
 </body>
