@@ -134,8 +134,8 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
       <legend>Rise &amp; Offset</legend>
       <div class="grid3">
         <div class="field"><label>Height</label><input id="t_h" class="dim" value="10" inputmode="decimal"></div>
-        <div class="field"><label>Offset W →</label><input id="t_ox" class="dim" value="0" inputmode="decimal"></div>
-        <div class="field"><label>Offset D ↓</label><input id="t_oz" class="dim" value="0" inputmode="decimal"></div>
+        <div class="field"><label>Offset W · + = left</label><input id="t_ox" class="dim" value="0" inputmode="decimal"></div>
+        <div class="field"><label>Offset D · + = back</label><input id="t_oz" class="dim" value="0" inputmode="decimal"></div>
       </div>
       <div class="hint">Offsets fill in automatically from Top Position — pick Custom to type your own. Fractions OK: 16 1/2, 16-1/2, 16.5</div>
     </fieldset>
@@ -261,9 +261,9 @@ function transitionModel(w1,d1,w2,d2,h,ox,oz){
   // panels: [bottomLeft, bottomRight, topRight, topLeft] with bottom edge first
   const panels=[
     {name:'FRONT', pts:[b[0],b[1],t[1],t[0]]},
-    {name:'RIGHT', pts:[b[1],b[2],t[2],t[1]]},
+    {name:'LEFT',  pts:[b[1],b[2],t[2],t[1]]},
     {name:'BACK',  pts:[b[2],b[3],t[3],t[2]]},
-    {name:'LEFT',  pts:[b[3],b[0],t[0],t[3]]},
+    {name:'RIGHT', pts:[b[3],b[0],t[0],t[3]]},
   ];
   return {b,t,panels};
 }
@@ -434,7 +434,7 @@ function rebuild(){
     // flush-side auto offsets: flush offset = (big - small) / 2
     const fw=flushW, fd=flushD;
     if(fw!=='custom' && w1>0 && w2>0){
-      const o = fw==='right' ? (w1-w2)/2 : fw==='left' ? -(w1-w2)/2 : 0;
+      const o = fw==='right' ? -(w1-w2)/2 : fw==='left' ? (w1-w2)/2 : 0;
       $('t_ox').value=fmtPlain(o);
     }
     if(fd!=='custom' && d1>0 && d2>0){
@@ -494,7 +494,7 @@ function rebuild(){
 }
 
 /* ---------------- Three.js preview ---------------- */
-let scene,camera,renderer,mesh,edgesObj,theta=0.7,phi=1.05,radius=60,target=new THREE.Vector3(0,0,0),autoSpin=true;
+let scene,camera,renderer,mesh,edgesObj,theta=-1.92,phi=1.05,radius=60,target=new THREE.Vector3(0,0,0),autoSpin=true;
 function init3D(){
   const vp=$('viewport');
   scene=new THREE.Scene();
@@ -585,8 +585,8 @@ function render3D(model){
   const half=maxDim/2;
   addLabel('FRONT', 0, 0, -(half+4));
   addLabel('BACK',  0, 0,  half+4);
-  addLabel('RIGHT', half+4, 0, 0);
-  addLabel('LEFT', -(half+4), 0, 0);
+  addLabel('LEFT',  half+4, 0, 0);
+  addLabel('RIGHT', -(half+4), 0, 0);
 }
 let labelObjs=[];
 function addLabel(text,x,y,z){
