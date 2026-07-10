@@ -55,7 +55,11 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
 .sheet{background:var(--cream); color:var(--navy); border:1px solid var(--line); border-radius:8px; margin-bottom:14px; padding:14px; box-shadow:0 1px 4px rgba(22,38,63,.10);}
 .sheet .tb{display:flex; justify-content:space-between; align-items:baseline; border-bottom:2px solid var(--navy); padding-bottom:6px; margin-bottom:8px;}
 .sheet .tb .co{font-family:'Barlow Condensed'; font-weight:700; font-size:15px; letter-spacing:.08em;}
-.sheet .tb .pc{font-family:'Barlow Condensed'; font-weight:600; font-size:14px; color:var(--rust); letter-spacing:.06em;}
+.sheet .tb .pc{font-family:'Barlow Condensed'; font-weight:600; font-size:14px; color:var(--rust); letter-spacing:.06em; display:flex; align-items:center; gap:8px;}
+.qtyc{display:inline-flex; align-items:center; gap:4px;}
+.qtyc button{width:26px; height:26px; border-radius:6px; border:1px solid var(--line); background:#fff; color:var(--navy); font-size:15px; font-weight:700; cursor:pointer; line-height:1;}
+.qtyc b{min-width:20px; text-align:center; color:var(--navy);}
+@media print{.qtyc button{display:none;}}
 .sheet .meta{display:flex; flex-wrap:wrap; gap:4px 14px; font-size:11px; margin-bottom:8px; color:#3d4f68;}
 .sheet svg{width:100%; height:auto; display:block;}
 .sheet .legendrow{display:flex; gap:16px; font-size:10px; margin-top:6px; color:#3d4f68;}
@@ -73,6 +77,9 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
 .bar button{flex:1; padding:14px 0; font-family:'Barlow Condensed'; font-size:17px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; border-radius:8px; border:none; cursor:pointer;}
 #btnPrint{background:var(--sky); color:#fff;}
 #btnPrint:active{background:#4a9bd1;}
+#btnAdd{background:#fff; color:var(--sky); border:2px solid var(--sky) !important;}
+#btnAdd:active{background:var(--skysoft);}
+#btnAdd.flash{background:var(--sky); color:#fff;}
 
 @media print{
   body{background:#fff; padding:0;}
@@ -94,6 +101,7 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
   <button id="tabP">Plenum</button>
   <button id="tabR">Return Drop</button>
   <button id="tabS">Sq → Round</button>
+  <button id="tabC">$ Price</button>
 </div>
 
 <div class="wrap">
@@ -190,6 +198,39 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
     </fieldset>
   </div>
 
+  <div id="formC" style="display:none">
+    <fieldset>
+      <legend>Material</legend>
+      <div class="grid3">
+        <div class="field"><label>Price basis</label>
+          <select id="pr_basis"><option value="sheet" selected>Per sheet</option><option value="lb">Per pound</option></select>
+        </div>
+        <div class="field"><label>$ / stock sheet</label><input id="pr_sheet" class="dim" value="48" inputmode="decimal"></div>
+        <div class="field"><label>$ / lb</label><input id="pr_lb" class="dim" value="1.35" inputmode="decimal"></div>
+      </div>
+      <div class="grid" style="margin-top:10px">
+        <div class="field"><label>Scrap / waste %</label><input id="pr_waste" class="dim" value="20" inputmode="decimal"></div>
+        <div class="field"><label>&nbsp;</label></div>
+      </div>
+      <div class="hint">Material figures from the actual blank areas of the fitting on screen (including quantities), using the gauge weight from Connections &amp; Seams and the selected stock sheet size.</div>
+    </fieldset>
+    <fieldset>
+      <legend>Labor &amp; Markup</legend>
+      <div class="grid3">
+        <div class="field"><label>Shop rate $/hr</label><input id="pr_rate" class="dim" value="95" inputmode="decimal"></div>
+        <div class="field"><label>Fab minutes</label><input id="pr_min" class="dim" value="40" inputmode="decimal"></div>
+        <div class="field"><label>Overhead %</label><input id="pr_oh" class="dim" value="15" inputmode="decimal"></div>
+      </div>
+      <div class="grid" style="margin-top:10px">
+        <div class="field"><label>Margin %</label><input id="pr_margin" class="dim" value="35" inputmode="decimal"></div>
+        <div class="field"><label>&nbsp;</label></div>
+      </div>
+      <div class="hint">Typical fab times: transition 40 min · plenum 35 · return drop 30 · square-to-round 55. Adjust for offsets, quantity, and how the day is going.</div>
+    </fieldset>
+    <div id="priceOut"></div>
+  </div>
+
+  <div id="sharedFields">
   <fieldset>
     <legend>Stock Sheet</legend>
     <div class="field"><label>Sheet size</label>
@@ -238,6 +279,7 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
     </div>
     <div class="field" style="margin-top:10px"><label>Job / tag</label><input id="jobtag" placeholder="e.g. Canton RTU-2 supply plenum"></div>
   </fieldset>
+  </div>
 
 </div>
 
@@ -263,6 +305,7 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
 </div>
 
 <div class="bar">
+  <button id="btnAdd">+ Add to Job</button>
   <button id="btnPrint">Print Cut Sheets</button>
 </div>
 
@@ -581,13 +624,19 @@ function svgPanel(dev, opts){
 
 /* ---------------- app state / rebuild ---------------- */
 let mode='T';
+let qtys={};
+function qtyOf(name){ return qtys[mode+':'+name]||1; }
+function qtyHtml(name){
+  const n=qtyOf(name);
+  return `<span class="qtyc"><button data-qp="${name}" data-qd="-1">−</button><b>QTY ${n}</b><button data-qp="${name}" data-qd="1">+</button></span>`;
+}
 const $=id=>document.getElementById(id);
-const inputs=['t_w1','t_d1','t_w2','t_d2','t_h','t_ox','t_oz','p_w','p_d','p_h','r_w','r_d','r_h','s_w','s_d','s_dia','s_h','s_ox','s_oz','a_top','a_bot','a_pkt','a_flg','conn','seam','ga','jobtag','stock'];
+const inputs=['t_w1','t_d1','t_w2','t_d2','t_h','t_ox','t_oz','p_w','p_d','p_h','r_w','r_d','r_h','s_w','s_d','s_dia','s_h','s_ox','s_oz','a_top','a_bot','a_pkt','a_flg','conn','seam','ga','jobtag','stock','pr_basis','pr_sheet','pr_lb','pr_waste','pr_rate','pr_min','pr_oh','pr_margin'];
 
 /* ---------------- autosave ---------------- */
 function saveState(){
   try{
-    const st={mode, flushW, flushD, v:{}};
+    const st={mode, flushW, flushD, qtys, job, v:{}};
     inputs.forEach(id=>st.v[id]=$(id).value);
     localStorage.setItem('mtfab_state', JSON.stringify(st));
   }catch(e){}
@@ -598,6 +647,8 @@ function restoreState(){
     if(!raw) return;
     const st=JSON.parse(raw);
     inputs.forEach(id=>{ if(st.v && st.v[id]!==undefined) $(id).value=st.v[id]; });
+    if(st.qtys) qtys=st.qtys;
+    if(st.job) job=st.job;
     flushW=st.flushW||'center'; flushD=st.flushD||'center';
     ['chipsW','chipsD'].forEach((cid,k)=>{
       const val=k===0?flushW:flushD;
@@ -689,11 +740,13 @@ function rebuild(){
     const mdl=sqRoundModel(w,d,dia,h,ox,oz,24);
     if(!mdl){warn('Geometry error — check dimensions.'); render3D(null); return;}
     const pat=svgSqRound(mdl, aTop, aBot, aFlg);
-    const blanks=[{w:pat.bw, h:pat.bh, name:'SQ→ROUND'}];
+    const nQ=qtyOf('SQ→ROUND');
+    const blanks=[];
+    for(let c=0;c<nQ;c++) blanks.push({w:pat.bw, h:pat.bh, name:'SQ→ROUND'+(nQ>1?' #'+(c+1):'')});
     const div=document.createElement('div');
     div.className='sheet';
     div.innerHTML=`
-      <div class="tb"><div class="co">MECHANICAL TEMP · FAB TICKET</div><div class="pc">SQUARE TO ROUND — ONE PIECE</div></div>
+      <div class="tb"><div class="co">MECHANICAL TEMP · FAB TICKET</div><div class="pc">SQUARE TO ROUND — ONE PIECE ${qtyHtml('SQ→ROUND')}</div></div>
       <div class="meta">
         <span><b>Job:</b> ${meta.job}</span><span><b>${meta.ga}</b></span>
         <span><b>${fmtIn(w)} × ${fmtIn(d)} → Ø${fmtIn(dia)}</b></span>
@@ -730,7 +783,8 @@ function rebuild(){
       ? {aBottom:1,aTop:1,aLeft:1,aRight:1}
       : {aBottom:aBot, aTop:aTop, aLeft:sideAmt, aRight:sideAmt};
     const pat=svgPanel(dev,opts);
-    blanks.push({w:pat.bw, h:pat.bh, name:dev.name});
+    const nQ=qtyOf(dev.name);
+    for(let c=0;c<nQ;c++) blanks.push({w:pat.bw, h:pat.bh, name:dev.name+(nQ>1?' #'+(c+1):'')});
     const div=document.createElement('div');
     div.className='sheet';
     const edgeNote = isCap
@@ -740,7 +794,7 @@ function rebuild(){
         : `Flange ${fmtIn(aFlg)} both side edges · top ${fmtIn(aTop)} · bot flange ${fmtIn(aBot)}`;
     const hasAllow = isCap || aBot>0 || aTop>0 || sideAmt>0;
     div.innerHTML=`
-      <div class="tb"><div class="co">MECHANICAL TEMP · FAB TICKET</div><div class="pc">PANEL ${i+1} — ${dev.name}</div></div>
+      <div class="tb"><div class="co">MECHANICAL TEMP · FAB TICKET</div><div class="pc">PANEL ${i+1} — ${dev.name} ${qtyHtml(dev.name)}</div></div>
       <div class="meta">
         <span><b>Job:</b> ${meta.job}</span><span><b>${meta.ga}</b></span>
         <span><b>Conn:</b> ${meta.conn}</span><span><b>Seam:</b> ${meta.seam}</span>
@@ -766,6 +820,12 @@ function rebuild(){
 
 /* ---------------- nesting (shelf packing) ---------------- */
 function renderNest(blanks, meta){
+  lastBlanks=blanks.slice();
+  lastLabel=({T:'TRANSITION',P:'PLENUM',R:'RETURN DROP',S:'SQUARE TO ROUND'})[mode]||'FITTING';
+  priceCalc();
+  buildNest(blanks, meta, $('sheets'));
+}
+function buildNest(blanks, meta, container){
   const dims=$('stock').value.split('x').map(Number);
   const SW=Math.max(dims[0],dims[1]), SH=Math.min(dims[0],dims[1]); // landscape: long side across
   const GAP=0.25;
@@ -826,7 +886,7 @@ function renderNest(blanks, meta){
         ${oversize.length?`<span style="color:#b5512f"><b>Won't fit stock:</b> ${oversize.map(o=>o.name).join(', ')}</span>`:''}
       </div>
       ${svg.join('')}`;
-    $('sheets').appendChild(div);
+    container.appendChild(div);
   });
 }
 
@@ -947,6 +1007,71 @@ function addLabel(text,x,y,z){
   labelObjs.push(sp);
 }
 
+/* ---------------- pricing ---------------- */
+let lastBlanks=[], lastLabel='';
+let job=[];
+const DEF_MIN={T:40,P:35,R:30,S:55};
+const GA_LB={ '26 ga':0.906, '24 ga':1.156, '22 ga':1.406, '20 ga':1.656 }; // galvanized lb/sqft
+function priceCalc(){
+  const out=$('priceOut');
+  if(!out) return;
+  const isJob=job.length>0;
+  const items = isJob ? job : (lastBlanks.length?[{label:lastLabel, blanks:lastBlanks, min:parseIn($('pr_min').value)||0}]:[]);
+  if(!items.length){ out.innerHTML='<div class="hint">Build a fitting on one of the other tabs first — pricing reads its blanks. Use + Add to Job to stack multiple fittings.</div>'; return; }
+  const allBlanks=items.reduce((a,it)=>a.concat(it.blanks),[]);
+  const sqft=allBlanks.reduce((s,b)=>s+b.w*b.h,0)/144;
+  const gaW=GA_LB[$('ga').value]||1.156;
+  const lbs=sqft*gaW;
+  const wasteF=1+(parseIn($('pr_waste').value)||0)/100;
+  const dims=$('stock').value.split('x').map(Number);
+  const sheetSqft=dims[0]*dims[1]/144;
+  const basis=$('pr_basis').value;
+  const mat = basis==='sheet'
+    ? (sqft*wasteF/sheetSqft)*(parseIn($('pr_sheet').value)||0)
+    : lbs*wasteF*(parseIn($('pr_lb').value)||0);
+  const totMin=items.reduce((s,it)=>s+(+it.min||0),0);
+  const labor=(parseIn($('pr_rate').value)||0)*totMin/60;
+  const oh=(mat+labor)*((parseIn($('pr_oh').value)||0)/100);
+  const cost=mat+labor+oh;
+  const price=cost*(1+((parseIn($('pr_margin').value)||0)/100));
+  const perLb=lbs>0?price/lbs:0;
+  const $f=v=>'$'+v.toFixed(2);
+  const jobRows = isJob ? `
+      <table style="width:100%; font-size:13px; border-collapse:collapse; margin-bottom:8px;">
+        <tr style="border-bottom:1px solid #d5dde6; font-size:11px; color:#5a6b80;"><td>FITTING</td><td>PCS</td><td>FT²</td><td style="text-align:right;">MIN</td><td></td></tr>
+        ${job.map((it,i)=>{
+          const a=(it.blanks.reduce((s,b)=>s+b.w*b.h,0)/144).toFixed(1);
+          return `<tr><td style="padding:4px 0;">${it.label}</td><td>${it.blanks.length}</td><td>${a}</td>
+            <td style="text-align:right;"><input class="jmin" data-ji="${i}" value="${it.min}" inputmode="numeric" style="width:44px; padding:3px; text-align:right; border:1px solid #d5dde6; border-radius:4px;"></td>
+            <td style="text-align:right;"><button class="jdel" data-ji="${i}" style="border:none; background:none; color:#b5512f; font-size:15px; cursor:pointer;">✕</button></td></tr>`;
+        }).join('')}
+      </table>` : '';
+  out.innerHTML=`
+    <div class="sheet">
+      <div class="tb"><div class="co">MECHANICAL TEMP · SHOP PRICE</div><div class="pc">${isJob?'JOB — '+job.length+' FITTINGS':lastLabel}
+        ${isJob?'<button id="jobClear" style="border:1px solid #d5dde6; background:#fff; color:#5a6b80; border-radius:6px; padding:3px 8px; font-size:11px; cursor:pointer;">CLEAR JOB</button>':''}</div></div>
+      <div class="meta">
+        <span><b>Metal:</b> ${sqft.toFixed(1)} ft² · ${lbs.toFixed(1)} lb (${$('ga').value})</span>
+        <span><b>Pieces:</b> ${allBlanks.length}</span>
+      </div>
+      ${jobRows}
+      <table style="width:100%; font-size:13px; border-collapse:collapse;">
+        <tr><td style="padding:4px 0;">Material (incl. ${((wasteF-1)*100).toFixed(0)}% scrap)</td><td style="text-align:right;">${$f(mat)}</td></tr>
+        <tr><td style="padding:4px 0;">Labor (${totMin} min @ ${$f(parseIn($('pr_rate').value)||0)}/hr)</td><td style="text-align:right;">${$f(labor)}</td></tr>
+        <tr><td style="padding:4px 0;">Overhead</td><td style="text-align:right;">${$f(oh)}</td></tr>
+        <tr style="border-top:1px solid #d5dde6;"><td style="padding:4px 0;">Shop cost</td><td style="text-align:right;">${$f(cost)}</td></tr>
+        <tr><td style="padding:4px 0;">Margin</td><td style="text-align:right;">${$f(price-cost)}</td></tr>
+        <tr style="border-top:2px solid #16263f; font-family:'Barlow Condensed'; font-size:20px; font-weight:700;">
+          <td style="padding:8px 0;">SELL PRICE</td><td style="text-align:right; color:#b5512f;">${$f(price)}</td></tr>
+      </table>
+      <div class="hint" style="margin-top:6px;">Sanity check: ${$f(perLb)}/lb fabricated. Custom fittings typically land $8–14/lb retail — under that you're leaving money on the table, way over and you'd better be the only shop in town.</div>
+    </div>
+    <div id="jobNest"></div>`;
+  if(isJob){
+    buildNest(allBlanks, {job:$('jobtag').value||'—', ga:$('ga').value}, $('jobNest'));
+  }
+}
+
 /* ---------------- wiring ---------------- */
 function setMode(m, doRebuild=true){
   mode=m;
@@ -955,12 +1080,23 @@ function setMode(m, doRebuild=true){
     $(tb).classList.toggle('on', k===m);
     $(fm).style.display = k===m ? '' : 'none';
   });
+  $('tabC').classList.remove('on');
+  $('formC').style.display='none';
+  $('sharedFields').style.display='';
   if(doRebuild) rebuild();
 }
 $('tabT').addEventListener('click',()=>setMode('T'));
 $('tabP').addEventListener('click',()=>setMode('P'));
 $('tabR').addEventListener('click',()=>setMode('R'));
 $('tabS').addEventListener('click',()=>setMode('S'));
+$('tabC').addEventListener('click',()=>{
+  ['tabT','tabP','tabR','tabS'].forEach(id=>$(id).classList.remove('on'));
+  ['formT','formP','formR','formS'].forEach(id=>$(id).style.display='none');
+  $('tabC').classList.add('on');
+  $('formC').style.display='';
+  $('sharedFields').style.display='none';
+  priceCalc();
+});
 let deb=null;
 inputs.forEach(id=>{
   const el=$(id);
@@ -979,6 +1115,34 @@ function wireChips(id, set){
 wireChips('chipsW', v=>flushW=v);
 wireChips('chipsD', v=>flushD=v);
 $('btnPrint').addEventListener('click',()=>window.print());
+$('btnAdd').addEventListener('click',()=>{
+  if(!lastBlanks.length) return;
+  job.push({label:lastLabel+($('jobtag').value?'':''), blanks:lastBlanks.slice(), min:DEF_MIN[mode]||40});
+  saveState();
+  const b=$('btnAdd');
+  b.classList.add('flash'); b.textContent='✓ Added ('+job.length+')';
+  setTimeout(()=>{b.classList.remove('flash'); b.textContent='+ Add to Job';},900);
+});
+$('priceOut') && document.addEventListener('click',e=>{
+  const del=e.target.closest('.jdel');
+  if(del){ job.splice(+del.dataset.ji,1); saveState(); priceCalc(); return; }
+  if(e.target.id==='jobClear'){ job=[]; saveState(); priceCalc(); }
+});
+document.addEventListener('change',e=>{
+  if(e.target.classList && e.target.classList.contains('jmin')){
+    const i=+e.target.dataset.ji;
+    if(job[i]) job[i].min=Math.max(0,parseFloat(e.target.value)||0);
+    saveState(); priceCalc();
+  }
+});
+
+$('sheets').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-qp]');
+  if(!b) return;
+  const key=mode+':'+b.dataset.qp;
+  qtys[key]=Math.max(1,Math.min(20,(qtys[key]||1)+ +b.dataset.qd));
+  rebuild();
+});
 
 /* ---------------- quick pad ---------------- */
 const qpad=$('qpad');
