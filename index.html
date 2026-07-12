@@ -25,6 +25,11 @@ header.app .sub{font-size:11px; color:var(--dim); letter-spacing:.14em; text-tra
 .tabs button{flex:1; padding:10px 0; font-family:'Barlow Condensed'; font-size:16px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; background:var(--panel); color:var(--dim); border:1px solid var(--line); border-radius:8px; cursor:pointer;}
 .tabs button.on{background:var(--skysoft); color:var(--sky); border-color:var(--sky);}
 
+.jobbar{display:flex; gap:6px; padding:10px 16px 0; max-width:792px; margin:0 auto; align-items:center;}
+.jobbar button,.jobbar select{padding:8px 10px; font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; background:var(--panel); color:var(--navy); border:1px solid var(--line); border-radius:8px; cursor:pointer;}
+.jobbar select{flex:1; min-width:0; text-transform:none; font-family:'Barlow',sans-serif; font-weight:400;}
+.jobbar #jbDel{color:var(--rust);}
+
 .wrap{padding:12px 16px; max-width:760px; margin:0 auto;}
 fieldset{border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:12px; background:var(--panel); box-shadow:0 1px 3px rgba(22,38,63,.06);}
 legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--sky); padding:0 6px;}
@@ -102,6 +107,13 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
   <button id="tabR">Return Drop</button>
   <button id="tabS">Sq → Round</button>
   <button id="tabC">$ Price</button>
+</div>
+
+<div class="jobbar">
+  <button id="jbNew">⊕ New Job</button>
+  <button id="jbSave">Save Job</button>
+  <select id="jbLoad"><option value="">Load saved…</option></select>
+  <button id="jbDel" title="Delete selected saved job">🗑</button>
 </div>
 
 <div class="wrap">
@@ -678,29 +690,29 @@ const inputs=['t_w1','t_d1','t_w2','t_d2','t_h','t_ox','t_oz','p_w','p_d','p_h',
 /* ---------------- autosave ---------------- */
 function saveState(){
   try{
-    const st={mode, flushW, flushD, consP, consR, qtys, job, v:{}};
-    inputs.forEach(id=>st.v[id]=$(id).value);
-    localStorage.setItem('mtfab_state', JSON.stringify(st));
+    localStorage.setItem('mtfab_state', JSON.stringify(currentState()));
   }catch(e){}
+}
+function applyState(st){
+  inputs.forEach(id=>{ if(st.v && st.v[id]!==undefined) $(id).value=st.v[id]; });
+  if(st.qtys) qtys=st.qtys;
+  if(st.job) job=st.job;
+  flushW=st.flushW||'center'; flushD=st.flushD||'center';
+  consP=st.consP||'wrap'; consR=st.consR||'wrap';
+  ['chipsW','chipsD'].forEach((cid,k)=>{
+    const val=k===0?flushW:flushD;
+    $(cid).querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===val));
+  });
+  [['chipsPC',consP],['chipsRC',consR]].forEach(([cid,val])=>{
+    $(cid).querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===val));
+  });
+  if(st.mode) setMode(st.mode, false);
 }
 function restoreState(){
   try{
     const raw=localStorage.getItem('mtfab_state');
     if(!raw) return;
-    const st=JSON.parse(raw);
-    inputs.forEach(id=>{ if(st.v && st.v[id]!==undefined) $(id).value=st.v[id]; });
-    if(st.qtys) qtys=st.qtys;
-    if(st.job) job=st.job;
-    flushW=st.flushW||'center'; flushD=st.flushD||'center';
-    consP=st.consP||'wrap'; consR=st.consR||'wrap';
-    ['chipsW','chipsD'].forEach((cid,k)=>{
-      const val=k===0?flushW:flushD;
-      $(cid).querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===val));
-    });
-    [['chipsPC',consP],['chipsRC',consR]].forEach(([cid,val])=>{
-      $(cid).querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===val));
-    });
-    if(st.mode) setMode(st.mode, false);
+    applyState(JSON.parse(raw));
   }catch(e){}
 }
 
@@ -1123,6 +1135,70 @@ function priceCalc(){
   }
 }
 
+/* ---------------- saved jobs ---------------- */
+const SHOP_KEYS=['pr_basis','pr_sheet','pr_lb','pr_waste','pr_rate','pr_oh','pr_margin','a_pkt','a_flg','conn','seam']; // shop settings survive New Job
+function currentState(){
+  const st={mode, flushW, flushD, consP, consR, qtys, job, v:{}};
+  inputs.forEach(id=>st.v[id]=$(id).value);
+  return st;
+}
+function savedJobs(){
+  try{ return JSON.parse(localStorage.getItem('mtfab_jobs')||'[]'); }catch(e){ return []; }
+}
+function writeSavedJobs(list){
+  try{ localStorage.setItem('mtfab_jobs', JSON.stringify(list)); }catch(e){}
+  refreshJobList();
+}
+function refreshJobList(){
+  const sel=$('jbLoad');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">Load saved…</option>'+savedJobs().map(j=>`<option value="${j.name.replace(/"/g,'&quot;')}">${j.name}</option>`).join('');
+  sel.value=cur;
+}
+$('jbSave').addEventListener('click',()=>{
+  let name=$('jobtag').value.trim();
+  if(!name) name=prompt('Job name?');
+  if(!name) return;
+  $('jobtag').value=name;
+  const list=savedJobs().filter(j=>j.name!==name);
+  list.unshift({name, ts:Date.now(), st:currentState()});
+  writeSavedJobs(list.slice(0,50));
+  const b=$('jbSave'); const t=b.textContent;
+  b.textContent='✓ Saved'; setTimeout(()=>b.textContent=t,900);
+});
+$('jbNew').addEventListener('click',()=>{
+  if(job.length && !confirm('Start a new job? Current basket clears (save it first if you want it).')) return;
+  job=[]; qtys={};
+  // reset job-specific fields, keep shop settings
+  inputs.forEach(id=>{
+    if(SHOP_KEYS.includes(id)) return;
+    const el=$(id);
+    if(el.tagName==='SELECT'){ if(id==='stock') el.value='48x96'; return; }
+  });
+  $('jobtag').value='';
+  flushW='center'; flushD='center';
+  ['chipsW','chipsD'].forEach(cid=>{
+    $(cid).querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v==='center'));
+  });
+  saveState();
+  setMode('T');
+});
+$('jbLoad').addEventListener('change',()=>{
+  const name=$('jbLoad').value;
+  if(!name) return;
+  const j=savedJobs().find(x=>x.name===name);
+  if(!j) return;
+  applyState(j.st);
+  rebuild();
+});
+$('jbDel').addEventListener('click',()=>{
+  const name=$('jbLoad').value;
+  if(!name){ alert('Pick a saved job in the dropdown first.'); return; }
+  if(!confirm('Delete saved job "'+name+'"?')) return;
+  writeSavedJobs(savedJobs().filter(j=>j.name!==name));
+  $('jbLoad').value='';
+});
+
 /* ---------------- wiring ---------------- */
 function setMode(m, doRebuild=true){
   mode=m;
@@ -1244,6 +1320,7 @@ qpad.addEventListener('pointerdown',e=>{
 
 init3D();
 restoreState();
+refreshJobList();
 rebuild();
 </script>
 </body>
