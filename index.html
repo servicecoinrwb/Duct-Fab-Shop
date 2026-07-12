@@ -159,7 +159,13 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
         <div class="field"><label>Depth</label><input id="p_d" class="dim" value="20" inputmode="decimal"></div>
         <div class="field"><label>Height</label><input id="p_h" class="dim" value="36" inputmode="decimal"></div>
       </div>
-      <div class="hint">4 side panels + top cap. Cap gets a fold-down flange on all four edges.</div>
+      <div class="field" style="margin-top:10px"><label>Construction</label>
+        <div class="chips" id="chipsPC">
+          <button data-v="wrap" class="on">2 L-pieces (wrap)</button>
+          <button data-v="panels">4 panels</button>
+        </div>
+      </div>
+      <div class="hint">L-pieces: width leg + depth leg in one blank with a 90° brake at the corner. Long-leg edge gets the 5/16" flange, short-leg edge gets the Pittsburgh — two seams land on the narrow sides.</div>
     </fieldset>
   </div>
 
@@ -194,7 +200,13 @@ legend{font-family:'Barlow Condensed'; font-size:13px; font-weight:600; letter-s
         <div class="field"><label>Depth</label><input id="r_d" class="dim" value="8" inputmode="decimal"></div>
         <div class="field"><label>Drop height</label><input id="r_h" class="dim" value="48" inputmode="decimal"></div>
       </div>
-      <div class="hint">Open-ended rectangular drop — 4 side panels, no cap. Top edge connects to the return trunk / filter rack, bottom flange screws to the furnace cabinet.</div>
+      <div class="field" style="margin-top:10px"><label>Construction</label>
+        <div class="chips" id="chipsRC">
+          <button data-v="wrap" class="on">2 L-pieces (wrap)</button>
+          <button data-v="panels">4 panels</button>
+        </div>
+      </div>
+      <div class="hint">Open-ended rectangular drop. L-pieces: one blank = width leg + depth leg, brake 90° at the corner, flange on the long-leg edge, pocket on the short-leg edge.</div>
     </fieldset>
   </div>
 
@@ -521,6 +533,13 @@ function svgSqRound(mdl, aTop, aBot, aLap){
   return {svg:head+s.join('')+'</svg>', bw:bMaxX-bMinX, bh:bMaxY-bMinY};
 }
 
+function wrapPanels(w,d,h){
+  const L=w+d;
+  const mk=n=>({name:'L-PIECE '+n+' of 2', q:[{x:0,y:0},{x:L,y:0},{x:L,y:h},{x:0,y:h}],
+    edges:{bottom:L,right:h,top:L,left:h}, planar:true, Lpiece:{w,d}});
+  return [mk(1), mk(2)];
+}
+
 /* ---------------- SVG cut sheet ---------------- */
 function svgPanel(dev, opts){
   // opts: {aBottom,aTop,aLeft,aRight, isCap, capFlange}
@@ -581,10 +600,26 @@ function svgPanel(dev, opts){
   // main outline
   s.push(`<path d="M ${pts.map(p=>p.x+' '+p.y).join(' L ')} Z" fill="rgba(111,183,227,0.10)" stroke="#16263f" stroke-width="0.1"/>`);
   // bend line on diagonal if not planar; cross break both diagonals if flat
+  const folds=opts.folds||[];
   if(!dev.planar){
     s.push(`<line x1="${pts[0].x}" y1="${pts[0].y}" x2="${pts[2].x}" y2="${pts[2].y}" stroke="#b5512f" stroke-width="0.07" stroke-dasharray="0.5 0.3"/>`);
     const bl=dist({x:pts[0].x,y:pts[0].y,z:0},{x:pts[2].x,y:pts[2].y,z:0});
     s.push(txt((pts[0].x+pts[2].x)/2+0.3,(pts[0].y+pts[2].y)/2-0.2,'BEND · '+fmtIn(bl),0.55,'#b5512f'));
+  } else if(folds.length){
+    // 90° corner brakes + cross break each leg separately
+    const yTop=pts[2].y, yBot=pts[0].y;
+    folds.forEach(fx=>{
+      s.push(`<line x1="${fx}" y1="${yBot}" x2="${fx}" y2="${yTop}" stroke="#b5512f" stroke-width="0.07" stroke-dasharray="0.5 0.3"/>`);
+      s.push(txt(fx+0.3,(yTop+yBot)/2,'BRAKE 90°',0.55,'#b5512f'));
+    });
+    const bounds=[pts[0].x, ...folds, pts[1].x];
+    for(let r=0;r<bounds.length-1;r++){
+      const x0=bounds[r], x1=bounds[r+1];
+      if(Math.min(x1-x0, Math.abs(yTop-yBot))>=8){
+        s.push(`<line x1="${x0}" y1="${yBot}" x2="${x1}" y2="${yTop}" stroke="#5a8ab0" stroke-width="0.05" stroke-dasharray="0.28 0.28"/>`);
+        s.push(`<line x1="${x1}" y1="${yBot}" x2="${x0}" y2="${yTop}" stroke="#5a8ab0" stroke-width="0.05" stroke-dasharray="0.28 0.28"/>`);
+      }
+    }
   } else {
     // cross break for stiffness — skip small panels that don't need it
     const spanX=Math.max(...pts.map(p=>p.x))-Math.min(...pts.map(p=>p.x));
@@ -612,7 +647,14 @@ function svgPanel(dev, opts){
     s.push(`<text x="${tx}" y="${ty}" font-size="0.62" font-weight="600" fill="#16263f" text-anchor="middle" transform="rotate(${ang} ${tx} ${ty})">${label}</text>`);
   }
   function txt(x,y,t,size,fill){return `<text x="${x}" y="${y}" font-size="${size}" font-weight="600" fill="${fill}">${t}</text>`;}
-  dimLine(pts[0],pts[1],1.1+(edgeAmt[0]||0), fmtIn(dev.edges.bottom));
+  if(folds.length){
+    const bnds=[pts[0].x, ...folds, pts[1].x];
+    for(let r=0;r<bnds.length-1;r++){
+      dimLine({x:bnds[r],y:pts[0].y},{x:bnds[r+1],y:pts[0].y},1.1+(edgeAmt[0]||0), fmtIn(bnds[r+1]-bnds[r]));
+    }
+  } else {
+    dimLine(pts[0],pts[1],1.1+(edgeAmt[0]||0), fmtIn(dev.edges.bottom));
+  }
   dimLine(pts[2],pts[3],1.1+(edgeAmt[2]||0), fmtIn(dev.edges.top));
   dimLine(pts[1],pts[2],1.1+(edgeAmt[1]||0), fmtIn(dev.edges.right));
   dimLine(pts[3],pts[0],1.1+(edgeAmt[3]||0), fmtIn(dev.edges.left));
@@ -636,7 +678,7 @@ const inputs=['t_w1','t_d1','t_w2','t_d2','t_h','t_ox','t_oz','p_w','p_d','p_h',
 /* ---------------- autosave ---------------- */
 function saveState(){
   try{
-    const st={mode, flushW, flushD, qtys, job, v:{}};
+    const st={mode, flushW, flushD, consP, consR, qtys, job, v:{}};
     inputs.forEach(id=>st.v[id]=$(id).value);
     localStorage.setItem('mtfab_state', JSON.stringify(st));
   }catch(e){}
@@ -650,8 +692,12 @@ function restoreState(){
     if(st.qtys) qtys=st.qtys;
     if(st.job) job=st.job;
     flushW=st.flushW||'center'; flushD=st.flushD||'center';
+    consP=st.consP||'wrap'; consR=st.consR||'wrap';
     ['chipsW','chipsD'].forEach((cid,k)=>{
       const val=k===0?flushW:flushD;
+      $(cid).querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===val));
+    });
+    [['chipsPC',consP],['chipsRC',consR]].forEach(([cid,val])=>{
       $(cid).querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===val));
     });
     if(st.mode) setMode(st.mode, false);
@@ -727,7 +773,7 @@ function rebuild(){
   } else if(mode==='P'){
     const w=parseIn($('p_w').value), d=parseIn($('p_d').value), h=parseIn($('p_h').value);
     if([w,d,h].some(v=>!(v>0))){warn('Enter all dimensions (must be greater than 0).'); render3D(null); return;}
-    panels=plenumPanels(w,d,h);
+    panels = consP==='wrap' ? wrapPanels(w,d,h) : plenumPanels(w,d,h);
     // top cap
     panels.push({name:'TOP CAP', q:[{x:0,y:0},{x:w,y:0},{x:w,y:d},{x:0,y:d}], edges:{bottom:w,right:d,top:w,left:d}, planar:true, isCap:true});
     model={plenum:{w,d,h}};
@@ -771,17 +817,20 @@ function rebuild(){
   } else {
     const w=parseIn($('r_w').value), d=parseIn($('r_d').value), h=parseIn($('r_h').value);
     if([w,d,h].some(v=>!(v>0))){warn('Enter all dimensions (must be greater than 0).'); render3D(null); return;}
-    panels=plenumPanels(w,d,h); // same 4 sides, no cap
+    panels = consR==='wrap' ? wrapPanels(w,d,h) : plenumPanels(w,d,h); // no cap either way
     model={drop:{w,d,h}};
   }
 
   const blanks=[];
   panels.forEach((dev,i)=>{
     const isCap=!!dev.isCap;
+    const isL=!!dev.Lpiece;
     const sideAmt = dev.role==='pocket' ? aPkt : aFlg;
     const opts = isCap
       ? {aBottom:1,aTop:1,aLeft:1,aRight:1}
-      : {aBottom:aBot, aTop:aTop, aLeft:sideAmt, aRight:sideAmt};
+      : isL
+        ? {aBottom:aBot, aTop:aTop, aLeft:aFlg, aRight:aPkt, folds:[dev.Lpiece.w]}
+        : {aBottom:aBot, aTop:aTop, aLeft:sideAmt, aRight:sideAmt};
     const pat=svgPanel(dev,opts);
     const nQ=qtyOf(dev.name);
     for(let c=0;c<nQ;c++) blanks.push({w:pat.bw, h:pat.bh, name:dev.name+(nQ>1?' #'+(c+1):'')});
@@ -789,7 +838,9 @@ function rebuild(){
     div.className='sheet';
     const edgeNote = isCap
       ? '1" fold-down flange all edges'
-      : dev.role==='pocket'
+      : isL
+        ? `Flange ${fmtIn(aFlg)} long-leg edge · pocket ${fmtIn(aPkt)} short-leg edge · brake 90° at ${fmtIn(dev.Lpiece.w)} · top ${fmtIn(aTop)} · bot flange ${fmtIn(aBot)}`
+        : dev.role==='pocket'
         ? `Pocket ${fmtIn(aPkt)} both side edges · top ${fmtIn(aTop)} · bot flange ${fmtIn(aBot)}`
         : `Flange ${fmtIn(aFlg)} both side edges · top ${fmtIn(aTop)} · bot flange ${fmtIn(aBot)}`;
     const hasAllow = isCap || aBot>0 || aTop>0 || sideAmt>0;
@@ -1103,6 +1154,7 @@ inputs.forEach(id=>{
   el.addEventListener('input',()=>{clearTimeout(deb); deb=setTimeout(rebuild,250);});
 });
 let flushW='center', flushD='center';
+let consP='wrap', consR='wrap';
 function wireChips(id, set){
   $(id).addEventListener('click',e=>{
     const b=e.target.closest('button'); if(!b) return;
@@ -1114,6 +1166,8 @@ function wireChips(id, set){
 }
 wireChips('chipsW', v=>flushW=v);
 wireChips('chipsD', v=>flushD=v);
+wireChips('chipsPC', v=>consP=v);
+wireChips('chipsRC', v=>consR=v);
 function forceCustom(axis){
   if(axis==='W' && flushW!=='custom'){ flushW='custom'; syncChips('chipsW','custom'); }
   if(axis==='D' && flushD!=='custom'){ flushD='custom'; syncChips('chipsD','custom'); }
