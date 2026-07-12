@@ -711,8 +711,8 @@ function rebuild(){
       const o = fd==='back' ? (d1-d2)/2 : fd==='front' ? -(d1-d2)/2 : 0;
       $('t_oz').value=fmtPlain(o);
     }
-    $('t_ox').disabled = fw!=='custom';
-    $('t_oz').disabled = fd!=='custom';
+    $('t_ox').disabled = false;
+    $('t_oz').disabled = false;
     const ox=parseIn($('t_ox').value)||0, oz=parseIn($('t_oz').value)||0;
     if([w1,d1,w2,d2,h].some(v=>!(v>0))){warn('Enter all dimensions (must be greater than 0).'); render3D(null); return;}
     if(h < Math.max(Math.abs(ox),Math.abs(oz))*0.4 && (ox||oz)) warn('Steep offset for this height — check that the fitting is buildable before cutting.');
@@ -1114,6 +1114,15 @@ function wireChips(id, set){
 }
 wireChips('chipsW', v=>flushW=v);
 wireChips('chipsD', v=>flushD=v);
+function forceCustom(axis){
+  if(axis==='W' && flushW!=='custom'){ flushW='custom'; syncChips('chipsW','custom'); }
+  if(axis==='D' && flushD!=='custom'){ flushD='custom'; syncChips('chipsD','custom'); }
+}
+function syncChips(id,val){
+  $(id).querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v===val));
+}
+$('t_ox').addEventListener('input',()=>forceCustom('W'));
+$('t_oz').addEventListener('input',()=>forceCustom('D'));
 $('btnPrint').addEventListener('click',()=>window.print());
 $('btnAdd').addEventListener('click',()=>{
   if(!lastBlanks.length) return;
@@ -1174,6 +1183,8 @@ qpad.addEventListener('pointerdown',e=>{
     if(neg) v=-v;
   }
   activeDim.value=fmtPlain(v);
+  if(activeDim.id==='t_ox') forceCustom('W');
+  if(activeDim.id==='t_oz') forceCustom('D');
   clearTimeout(deb); deb=setTimeout(rebuild,200);
 });
 
