@@ -122,6 +122,7 @@
     <button id="bSave" title="Download this drawing as a .json project file">Save</button>
     <button id="bLoad" title="Open a saved .json project file">Open</button>
     <button id="bPng" title="Export the current view as a PNG image">PNG ⤓</button>
+    <button id="bPdf" title="Export a print-ready PDF — white background, MT title block, fits the whole drawing to letter landscape">PDF ⤓</button>
   </div>
 
   <div class="tb-group">
@@ -240,7 +241,7 @@
     <p class="sec">SELECTION</p>
     <p>Click an object with Select, then drag to move. <kbd>Q</kbd>/<kbd>W</kbd> rotate symbols, <kbd>F</kbd> flips/mirrors them (for opposite-hand elbows, wyes, offsets), <kbd>[</kbd>/<kbd>]</kbd> resize, <kbd>Ctrl+D</kbd> duplicate, <kbd>Del</kbd> delete.</p>
     <p class="sec">VIEW & FILES</p>
-    <p>Scroll wheel zooms at the cursor; middle-drag or hold <kbd>Space</kbd> to pan. <kbd>Ctrl+Z</kbd>/<kbd>Y</kbd> undo/redo. The board autosaves in this browser; use Save/Open for .json project files and PNG ⤓ to export exactly what's on screen.</p>
+    <p>Scroll wheel zooms at the cursor; middle-drag or hold <kbd>Space</kbd> to pan. <kbd>Ctrl+Z</kbd>/<kbd>Y</kbd> undo/redo. The board autosaves in this browser; Save/Open handles .json project files. <b>PNG ⤓</b> exports the current view as-is; <b>PDF ⤓</b> auto-fits the whole drawing onto letter landscape with a white background and the MT title block — that's the one to attach to quotes or hand to a customer.</p>
     <p style="margin-top:14px;"><button id="bHelpX" style="border:1px solid var(--sky); width:100%;">Close</button></p>
   </div>
 </div>
@@ -889,6 +890,106 @@ function dl(url, name){
   const a=document.createElement('a'); a.href=url; a.download=name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+
+/* ---------------- PDF export ---------------- */
+function drawingBounds(){
+  // union of every visible object's bbox, in world units
+  let b = null;
+  objsG.querySelectorAll('[data-id]').forEach(g=>{
+    const r = g.getBBox();
+    if(!b) b = {x0:r.x, y0:r.y, x1:r.x+r.width, y1:r.y+r.height};
+    else { b.x0=Math.min(b.x0,r.x); b.y0=Math.min(b.y0,r.y);
+           b.x1=Math.max(b.x1,r.x+r.width); b.y1=Math.max(b.y1,r.y+r.height); }
+  });
+  if(S.underlay){
+    const u=S.underlay;
+    if(!b) b={x0:u.x,y0:u.y,x1:u.x+u.w,y1:u.y+u.h};
+    else { b.x0=Math.min(b.x0,u.x); b.y0=Math.min(b.y0,u.y);
+           b.x1=Math.max(b.x1,u.x+u.w); b.y1=Math.max(b.y1,u.y+u.h); }
+  }
+  return b;
+}
+
+function loadJsPDF(){
+  if(window.jspdf) return Promise.resolve();
+  return new Promise((res, rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload=res; s.onerror=rej; document.head.appendChild(s);
+  });
+}
+
+$('#bPdf').onclick = async ()=>{
+  const b = drawingBounds();
+  if(!b) return toast('Nothing to export yet — draw something first.');
+  try{ await loadJsPDF(); }
+  catch(e){ return toast('PDF library needs internet to load the first time — use PNG ⤓ meanwhile.'); }
+
+  const job = prompt('Job / customer name for the title block (blank for none):') || '';
+  const M = 40, x0=b.x0-M, y0=b.y0-M, w=b.x1-b.x0+2*M, h=b.y1-b.y0+2*M;
+
+  selG.innerHTML=''; liveG.innerHTML='';
+  const clone = cv.cloneNode(true);
+  clone.querySelector('#gridg') && (clone.querySelector('#gridg').innerHTML =
+    gridForExport(x0, y0, w, h));
+  clone.querySelector('#emptyg') && (clone.querySelector('#emptyg').innerHTML='');
+  clone.setAttribute('width', w); clone.setAttribute('height', h);
+  clone.setAttribute('viewBox', `${x0} ${y0} ${w} ${h}`);
+  // print-friendly: cream notes -> navy so they show on white paper
+  const src = new XMLSerializer().serializeToString(clone)
+    .replaceAll('#f5efe3','#16263f').replaceAll('rgba(245,239,227','rgba(22,38,63');
+
+  const img = new Image();
+  img.onload = ()=>{
+    const scale = Math.min(3, 2200/Math.max(w,h)+1);
+    const c = document.createElement('canvas');
+    c.width = w*scale; c.height = h*scale;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,c.width,c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+
+    const { jsPDF } = window.jspdf;
+    const PW=792, PH=612, TB=58, PM=24;
+    const pdf = new jsPDF({orientation:'landscape', unit:'pt', format:'letter'});
+    // paper + frame
+    pdf.setFillColor(245,239,227); pdf.rect(0,0,PW,PH,'F');
+    pdf.setFillColor(255,255,255); pdf.setDrawColor(22,38,63); pdf.setLineWidth(1.5);
+    pdf.rect(PM-8, PM-8, PW-2*PM+16, PH-2*PM-TB+16, 'FD');
+    // fit drawing
+    const aw=PW-2*PM, ah=PH-2*PM-TB, k=Math.min(aw/w, ah/h);
+    pdf.addImage(c.toDataURL('image/png'), 'PNG', PM+(aw-w*k)/2, PM+(ah-h*k)/2, w*k, h*k);
+    // title block
+    pdf.setFillColor(22,38,63); pdf.rect(PM-8, PH-PM-TB+16, PW-2*PM+16, TB-16, 'F');
+    pdf.setFont('courier','bold'); pdf.setTextColor(245,239,227); pdf.setFontSize(15);
+    pdf.text('MT SKETCH', PM+6, PH-PM-TB+38);
+    pdf.setFontSize(8.5); pdf.setTextColor(111,183,227);
+    pdf.text(job ? job.toUpperCase() : 'DUCT LAYOUT', PM+6, PH-PM-TB+52);
+    pdf.setFontSize(9); pdf.setTextColor(245,239,227);
+    pdf.text('MECHANICAL TEMP LLC · 23093 TELEGRAPH RD, SOUTHFIELD MI 48033 · 313-282-4758', PW-PM-6, PH-PM-TB+38, {align:'right'});
+    pdf.setFontSize(8.5); pdf.setTextColor(111,183,227);
+    pdf.text('LIC #7117025 · GRID = 1 FT · ' + new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}).toUpperCase(), PW-PM-6, PH-PM-TB+52, {align:'right'});
+    pdf.save('mt-sketch.pdf');
+    toast('PDF exported — whole drawing auto-fit to letter landscape with the MT title block.');
+    renderSel();
+  };
+  img.onerror = ()=>toast('PDF export failed — try again after the underlay finishes loading.');
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+};
+
+function gridForExport(x0, y0, w, h){
+  // faint navy 1-ft grid over the export area for scale reference
+  let out='';
+  const sw = Math.max(0.6, w/1400);
+  for(let gx=Math.floor(x0/CELL)*CELL; gx<=x0+w; gx+=CELL){
+    const major = Math.round(gx/CELL)%5===0;
+    out += `<line x1="${gx}" y1="${y0}" x2="${gx}" y2="${y0+h}" stroke="rgba(22,38,63,${major?0.14:0.06})" stroke-width="${sw}"/>`;
+  }
+  for(let gy=Math.floor(y0/CELL)*CELL; gy<=y0+h; gy+=CELL){
+    const major = Math.round(gy/CELL)%5===0;
+    out += `<line x1="${x0}" y1="${gy}" x2="${x0+w}" y2="${gy}" stroke="rgba(22,38,63,${major?0.14:0.06})" stroke-width="${sw}"/>`;
+  }
+  return out;
 }
 
 /* ---------------- resize / init ---------------- */
