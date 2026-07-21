@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MT Sketch — HVAC Drawing Board</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2316263f'/%3E%3Cpath d='M6 22V10l5 7 5-7v12' stroke='%236fb7e3' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M20 12h7M23.5 12v10' stroke='%23b5512f' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
   :root{
     --navy:#16263f; --navy-deep:#0c1626; --canvas:#101c30;
@@ -475,7 +476,7 @@ function setTool(t, sym){
   S.tool = t; S.stampSym = sym||null;
   document.querySelectorAll('#tools [data-tool]').forEach(b=>b.classList.toggle('on', b.dataset.tool===t));
   document.querySelectorAll('.pal').forEach(b=>b.classList.toggle('on', t==='stamp' && b.dataset.sym===sym));
-  cv.className = 'tool-'+t;
+  cv.setAttribute('class', 'tool-'+t);
   $('#ductOpts').style.display = (t==='duct') ? 'flex' : 'none';
   if(t!=='select'){ S.selId=null; renderSel(); }
   hint();
@@ -748,7 +749,7 @@ document.addEventListener('keydown', e=>{
   }
 });
 document.addEventListener('keyup', e=>{
-  if(e.code==='Space'){ spaceHeld=false; if(S.tool!=='pan') cv.className='tool-'+S.tool; }
+  if(e.code==='Space'){ spaceHeld=false; if(S.tool!=='pan') cv.setAttribute('class','tool-'+S.tool); }
 });
 
 /* ---------------- selection ops ---------------- */
