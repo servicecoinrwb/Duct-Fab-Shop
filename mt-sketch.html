@@ -84,6 +84,7 @@
   #palette .hint{font-size:10px; color:var(--dim); padding:0 10px 8px; line-height:1.45;}
   #palgrid{display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:0 8px 10px; overflow-y:auto;}
   #palgrid::-webkit-scrollbar{width:6px;} #palgrid::-webkit-scrollbar-thumb{background:var(--line); border-radius:3px;}
+  .palhead{grid-column:1/-1; font-size:9px; letter-spacing:.14em; color:var(--sky); opacity:.85; padding:8px 2px 1px;}
   .pal{display:flex; flex-direction:column; align-items:center; gap:3px; padding:7px 2px 5px;
     border:1px solid var(--line); border-radius:5px; background:transparent; color:var(--dim); font-size:9.5px;}
   .pal svg{width:34px; height:34px; color:var(--cream);}
@@ -139,7 +140,9 @@
   </div>
 
   <div class="tb-group" id="ductOpts" style="display:none">
-    <label title="Nominal duct width. Grid squares are 1 ft, so the run is drawn to scale.">DUCT W (in)</label>
+    <button id="dRect" class="on" title="Rectangular duct — square mitered elbows at corners">Rect</button>
+    <button id="dRound" title="Round pipe — radiused elbows at corners">Round</button>
+    <label title="Nominal duct width or pipe diameter. Grid squares are 1 ft, so the run is drawn to scale.">W (in)</label>
     <input type="number" id="ductW" value="8" min="4" max="60" step="1">
   </div>
 
@@ -186,6 +189,7 @@
     <div id="selbar">
       <button id="sRotL" title="Rotate 90° counter-clockwise (Q)">⟲ 90</button>
       <button id="sRotR" title="Rotate 90° clockwise (W)">⟳ 90</button>
+      <button id="sFlip" title="Flip / mirror (F) — gets the opposite-hand version of elbows, wyes, offsets">⇋ Flip</button>
       <button id="sSmall" title="Smaller ( [ )">−</button>
       <button id="sBig" title="Bigger ( ] )">＋</button>
       <button id="sEdit" title="Edit text">✎</button>
@@ -229,12 +233,12 @@
     <p>A quick markup board for site surveys and quote sketches. Grid squares are <b>1 ft</b> nominal, so duct widths draw roughly to scale.</p>
     <p class="sec">TOOLS</p>
     <p><kbd>V</kbd> Select/Move · <kbd>H</kbd> Pan · <kbd>P</kbd> Pen · <kbd>L</kbd> Line · <kbd>B</kbd> Box · <kbd>D</kbd> Duct run · <kbd>T</kbd> Text · <kbd>E</kbd> Eraser</p>
-    <p class="sec">DUCT RUNS</p>
-    <p>Click each corner along the run. <kbd>Enter</kbd> or double-click finishes, <kbd>Esc</kbd> cancels. With Snap on, segments lock to 45° angles. Set the width (inches) in the top bar while the tool is active.</p>
+    <p class="sec">DUCT RUNS (STRAIGHT DUCT & PIPE)</p>
+    <p>You don't stamp straight sections — the <b>Duct run</b> tool draws them. Click each corner along the run; elbows form automatically at every turn. Pick <b>Rect</b> (mitered square elbows) or <b>Round</b> (radiused pipe elbows) and set the width/diameter in inches in the top bar. <kbd>Enter</kbd> or double-click finishes, <kbd>Esc</kbd> cancels. The palette fittings are for the pieces that sit on or between runs: takeoffs, wyes, reducers, dampers, boots.</p>
     <p class="sec">LAYERS</p>
     <p><b style="color:var(--sky)">Existing</b> (sky) for what's there now, <b style="color:var(--rust)">Proposed</b> (rust) for new work, <b>Notes</b> (cream) for dimensions and callouts. The eye icon hides a layer without deleting anything.</p>
     <p class="sec">SELECTION</p>
-    <p>Click an object with Select, then drag to move. <kbd>Q</kbd>/<kbd>W</kbd> rotate symbols, <kbd>[</kbd>/<kbd>]</kbd> resize, <kbd>Ctrl+D</kbd> duplicate, <kbd>Del</kbd> delete.</p>
+    <p>Click an object with Select, then drag to move. <kbd>Q</kbd>/<kbd>W</kbd> rotate symbols, <kbd>F</kbd> flips/mirrors them (for opposite-hand elbows, wyes, offsets), <kbd>[</kbd>/<kbd>]</kbd> resize, <kbd>Ctrl+D</kbd> duplicate, <kbd>Del</kbd> delete.</p>
     <p class="sec">VIEW & FILES</p>
     <p>Scroll wheel zooms at the cursor; middle-drag or hold <kbd>Space</kbd> to pan. <kbd>Ctrl+Z</kbd>/<kbd>Y</kbd> undo/redo. The board autosaves in this browser; use Save/Open for .json project files and PNG ⤓ to export exactly what's on screen.</p>
     <p style="margin-top:14px;"><button id="bHelpX" style="border:1px solid var(--sky); width:100%;">Close</button></p>
@@ -277,29 +281,53 @@ const cv = $('#cv'), objsG = $('#objs'), liveG = $('#liveg'), selG = $('#selg'),
       gridG = $('#gridg'), underG = $('#underg'), emptyG = $('#emptyg');
 
 /* ---------------- symbol library ----------------
-   Each symbol lives in a 64×64 box centered on 0,0 and strokes currentColor. */
-const SYMS = [
- ['supply','Supply diff','<rect x="-22" y="-22" width="44" height="44"/><path d="M-22 -22 L22 22 M22 -22 L-22 22"/>'],
- ['return','Return grille','<rect x="-22" y="-22" width="44" height="44"/><path d="M-22 -22 L22 22"/>'],
- ['grille','Sidewall grille','<rect x="-24" y="-14" width="48" height="28"/><path d="M-17 -7h34M-17 0h34M-17 7h34"/>'],
- ['rtu','RTU','<rect x="-28" y="-18" width="56" height="36"/><circle cx="-11" cy="0" r="9"/><path d="M-11 -9v18M-20 0h18"/><text x="14" y="4" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">RTU</text>'],
- ['furnace','Furnace','<rect x="-16" y="-24" width="32" height="48"/><path d="M0 12c-7-4-6-9-1-13 1 4 6 4 6 9 0 3-2 5-5 4z"/><path d="M-16 -12h32"/><text x="0" y="-16" font-size="10" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">FAU</text>'],
- ['cond','Condenser','<rect x="-22" y="-22" width="44" height="44"/><circle cx="0" cy="0" r="15"/><path d="M0 0L9 -12M0 0L-14 -4M0 0L5 14"/><text x="0" y="30" font-size="0" fill="none"></text>'],
- ['coil','Evap coil','<rect x="-22" y="-16" width="44" height="32"/><path d="M-14 16L0 -16L14 16"/>'],
- ['tstat','T-stat','<circle cx="0" cy="0" r="15"/><text x="0" y="5" font-size="15" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">T</text>'],
- ['damper','Damper','<path d="M-24 -10h48M-24 10h48"/><path d="M-10 10L10 -10"/><circle cx="10" cy="-10" r="3"/>'],
- ['takeoff','Rnd takeoff','<circle cx="0" cy="0" r="14"/><path d="M-14 0h28M0 -22v8"/>'],
- ['elbow','Elbow 90','<path d="M-22 -18h24v40M-22 -2h8v24"/>'],
- ['tee','Duct tee','<path d="M-24 -12h48M-24 4h16v16M24 4h-16v16"/>'],
- ['trans','Transition','<path d="M-22 -16h20l24 8v16l-24 8h-20z"/>'],
- ['flex','Flex duct','<path d="M-24 -8v16M24 -8v16"/><path d="M-24 0c4-8 8 8 12 0s8 8 12 0 8 8 12 0 8 8 12 0"/>'],
- ['ef','Exhaust fan','<rect x="-18" y="-18" width="36" height="36"/><circle cx="0" cy="2" r="10"/><path d="M0 -8v-14M-4 -18l4-4 4 4"/><text x="0" y="6" font-size="9" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">EF</text>'],
- ['vav','VAV box','<rect x="-24" y="-14" width="48" height="28"/><text x="0" y="4" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">VAV</text>'],
- ['ms','Mini-split','<rect x="-24" y="-12" width="48" height="24" rx="6"/><path d="M-16 5h32M-16 -2h32"/><text x="0" y="-15" font-size="0"></text>'],
- ['wh','Water htr','<rect x="-12" y="-22" width="24" height="44" rx="10"/><text x="0" y="4" font-size="10" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">WH</text>'],
- ['boiler','Boiler','<rect x="-18" y="-20" width="36" height="40"/><path d="M-12 8c3-4 6 4 9 0s6 4 9 0"/><text x="0" y="-6" font-size="10" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">BLR</text>'],
- ['arrow','Airflow','<path d="M-22 0h38M8 -9l14 9-14 9"/>'],
+   Each symbol lives in a 64×64 box centered on 0,0 and strokes currentColor.
+   Grouped into palette categories. */
+const CATS = [
+ ['AIR DEVICES', [
+  ['supply','Supply diff','<rect x="-22" y="-22" width="44" height="44"/><path d="M-22 -22 L22 22 M22 -22 L-22 22"/>'],
+  ['return','Return grille','<rect x="-22" y="-22" width="44" height="44"/><path d="M-22 -22 L22 22"/>'],
+  ['grille','Sidewall grille','<rect x="-24" y="-14" width="48" height="28"/><path d="M-17 -7h34M-17 0h34M-17 7h34"/>'],
+  ['boot','Register boot','<path d="M-18 26h36v-12l-10-14h-16l-10 14z"/><path d="M-9 -6v6M9 -6v6"/><ellipse cx="0" cy="-6" rx="9" ry="4.5"/>'],
+ ]],
+ ['RECT DUCT FITTINGS', [
+  ['elbow','Elbow 90','<path d="M-22 -18h24v40M-22 -2h8v24"/>'],
+  ['elbow45','Elbow 45','<path d="M-26 -12h20l18 18v24M-26 4h13l15 15v11"/>'],
+  ['tee','Tee','<path d="M-24 -12h48M-24 4h16v16M24 4h-16v16"/>'],
+  ['cross','Cross','<path d="M-26 -8h16M-26 8h16M26 -8h-16M26 8h-16M-8 -26v16M8 -26v16M-8 26v-16M8 26v-16"/>'],
+  ['trans','Transition','<path d="M-22 -16h20l24 8v16l-24 8h-20z"/>'],
+  ['offset','Offset','<path d="M-28 -18h14l24 16h18M-28 -2h14l24 16h18"/>'],
+  ['endcap','End cap','<path d="M-26 -10h38M-26 10h38M12 -14v28"/>'],
+  ['tap','Top takeoff','<path d="M-28 2h56M-28 20h56"/><path d="M-6 2v-20h16v20"/><path d="M-6 -18l10 8"/>'],
+ ]],
+ ['ROUND PIPE FITTINGS', [
+  ['spiral','Spiral pipe','<path d="M-26 -10h52M-26 10h52M-18 -10l7 20M-4 -10l7 20M10 -10l7 20"/>'],
+  ['relbow','Rnd elbow 90','<path d="M-28 -14h8a34 34 0 0 1 34 34v8M-28 2h8a18 18 0 0 1 18 18v8"/>'],
+  ['wye','Wye / lateral','<path d="M-28 7h56M-28 -7h26M12 -7h16M-2 -7l18 -18M12 -7l18 -18"/>'],
+  ['reducer','Reducer','<path d="M-26 -14v28M-26 -14l48 9M-26 14l48 -9M22 -5v10"/>'],
+  ['collar','Start collar','<path d="M-26 18h52M-10 18v-12M10 18v-12"/><ellipse cx="0" cy="4" rx="10" ry="4.5"/>'],
+  ['rdamper','Rnd damper','<circle cx="0" cy="0" r="15"/><path d="M-9 9L9 -9"/><circle cx="9" cy="-9" r="2.5"/>'],
+  ['takeoff','Round Ø end','<circle cx="0" cy="0" r="14"/><path d="M-14 0h28M0 -22v8"/>'],
+  ['flex','Flex duct','<path d="M-24 -8v16M24 -8v16"/><path d="M-24 0c4-8 8 8 12 0s8 8 12 0 8 8 12 0 8 8 12 0"/>'],
+ ]],
+ ['EQUIPMENT', [
+  ['rtu','RTU','<rect x="-28" y="-18" width="56" height="36"/><circle cx="-11" cy="0" r="9"/><path d="M-11 -9v18M-20 0h18"/><text x="14" y="4" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">RTU</text>'],
+  ['furnace','Furnace','<rect x="-16" y="-24" width="32" height="48"/><path d="M0 12c-7-4-6-9-1-13 1 4 6 4 6 9 0 3-2 5-5 4z"/><path d="M-16 -12h32"/><text x="0" y="-16" font-size="10" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">FAU</text>'],
+  ['cond','Condenser','<rect x="-22" y="-22" width="44" height="44"/><circle cx="0" cy="0" r="15"/><path d="M0 0L9 -12M0 0L-14 -4M0 0L5 14"/>'],
+  ['coil','Evap coil','<rect x="-22" y="-16" width="44" height="32"/><path d="M-14 16L0 -16L14 16"/>'],
+  ['ef','Exhaust fan','<rect x="-18" y="-18" width="36" height="36"/><circle cx="0" cy="2" r="10"/><path d="M0 -8v-14M-4 -18l4-4 4 4"/><text x="0" y="6" font-size="9" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">EF</text>'],
+  ['vav','VAV box','<rect x="-24" y="-14" width="48" height="28"/><text x="0" y="4" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">VAV</text>'],
+  ['ms','Mini-split','<rect x="-24" y="-12" width="48" height="24" rx="6"/><path d="M-16 5h32M-16 -2h32"/>'],
+  ['wh','Water htr','<rect x="-12" y="-22" width="24" height="44" rx="10"/><text x="0" y="4" font-size="10" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">WH</text>'],
+  ['boiler','Boiler','<rect x="-18" y="-20" width="36" height="40"/><path d="M-12 8c3-4 6 4 9 0s6 4 9 0"/><text x="0" y="-6" font-size="10" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">BLR</text>'],
+ ]],
+ ['CONTROLS & MISC', [
+  ['tstat','T-stat','<circle cx="0" cy="0" r="15"/><text x="0" y="5" font-size="15" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">T</text>'],
+  ['damper','Rect damper','<path d="M-24 -10h48M-24 10h48"/><path d="M-10 10L10 -10"/><circle cx="10" cy="-10" r="3"/>'],
+  ['arrow','Airflow','<path d="M-22 0h38M8 -9l14 9-14 9"/>'],
+ ]],
 ];
+const SYMS = CATS.flatMap(([,items])=>items);
 
 function buildDefs(){
   $('#defs').innerHTML = SYMS.map(([id,,body]) =>
@@ -308,10 +336,13 @@ function buildDefs(){
 }
 
 function buildPalette(){
-  $('#palgrid').innerHTML = SYMS.map(([id,label]) =>
-    `<button class="pal" data-sym="${id}" title="Place: ${label}">
-       <svg viewBox="-34 -34 68 68"><use href="#sym-${id}"/></svg><span>${label}</span>
-     </button>`).join('');
+  $('#palgrid').innerHTML = CATS.map(([cat, items]) =>
+    `<div class="palhead">${cat}</div>` +
+    items.map(([id,label]) =>
+      `<button class="pal" data-sym="${id}" title="Place: ${label}">
+         <svg viewBox="-34 -34 68 68"><use href="#sym-${id}"/></svg><span>${label}</span>
+       </button>`).join('')
+  ).join('');
   $('#palgrid').addEventListener('click', e=>{
     const b = e.target.closest('.pal'); if(!b) return;
     setTool('stamp', b.dataset.sym);
@@ -393,16 +424,17 @@ function renderObj(o){
       return `<g data-id="${o.id}"><text x="${o.x}" y="${o.y}" font-size="${o.size}" fill="${col}" font-family="ui-monospace,Menlo,monospace" font-weight="600" style="user-select:none">${esc(o.text)}</text></g>`;
     case 'duct': {
       const d = ptsD(o.pts), W = o.w, inner = Math.max(0, W - 5);
+      const jn = o.round ? 'round' : 'miter', cap = o.round ? 'round' : 'butt';
       const body = W >= 10 && inner > 0
-        ? `<mask id="dm${o.id}"><path d="${d}" stroke="white" stroke-width="${W}" fill="none" stroke-linejoin="miter"/><path d="${d}" stroke="black" stroke-width="${inner}" fill="none" stroke-linejoin="miter"/></mask>
-           <path d="${d}" stroke="${col}" stroke-width="${W}" fill="none" stroke-linejoin="miter" mask="url(#dm${o.id})"/>
-           <path d="${d}" stroke="${col}" stroke-width="1" fill="none" stroke-dasharray="6 6" opacity="0.45"/>`
-        : `<path d="${d}" stroke="${col}" stroke-width="${Math.max(3,W)}" fill="none" stroke-linejoin="miter" opacity="0.9"/>`;
+        ? `<mask id="dm${o.id}"><path d="${d}" stroke="white" stroke-width="${W}" fill="none" stroke-linejoin="${jn}" stroke-linecap="${cap}"/><path d="${d}" stroke="black" stroke-width="${inner}" fill="none" stroke-linejoin="${jn}" stroke-linecap="${cap}"/></mask>
+           <path d="${d}" stroke="${col}" stroke-width="${W}" fill="none" stroke-linejoin="${jn}" stroke-linecap="${cap}" mask="url(#dm${o.id})"/>
+           <path d="${d}" stroke="${col}" stroke-width="1" fill="none" stroke-dasharray="6 6" stroke-linejoin="${jn}" opacity="0.45"/>`
+        : `<path d="${d}" stroke="${col}" stroke-width="${Math.max(3,W)}" fill="none" stroke-linejoin="${jn}" stroke-linecap="${cap}" opacity="0.9"/>`;
       return `<g data-id="${o.id}"><path d="${d}" ${hit} stroke-width="${Math.max(W,16)}"/>${body}</g>`;
     }
     case 'symbol': {
-      const s = o.scale || 1;
-      return `<g data-id="${o.id}" transform="translate(${o.x} ${o.y}) rotate(${o.rot||0}) scale(${s})" color="${col}">
+      const s = o.scale || 1, sx = o.flip ? -s : s;
+      return `<g data-id="${o.id}" transform="translate(${o.x} ${o.y}) rotate(${o.rot||0}) scale(${sx} ${s})" color="${col}">
                 <rect x="-32" y="-32" width="64" height="64" fill="rgba(0,0,0,0)" stroke="none"/>
                 <use href="#sym-${o.sym}"/></g>`;
     }
@@ -441,7 +473,7 @@ function renderSel(){
     fill="none" stroke="#6fb7e3" stroke-width="${1.4*px()}" stroke-dasharray="${5*px()} ${4*px()}"/>`;
   bar.classList.add('show');
   const isSym = o.type==='symbol', isTxt = o.type==='text';
-  $('#sRotL').style.display = $('#sRotR').style.display = isSym ? '' : 'none';
+  $('#sRotL').style.display = $('#sRotR').style.display = $('#sFlip').style.display = isSym ? '' : 'none';
   $('#sSmall').style.display = $('#sBig').style.display = (isSym||isTxt) ? '' : 'none';
   $('#sEdit').style.display = isTxt ? '' : 'none';
 }
@@ -488,7 +520,7 @@ const HINTS = {
   pen:'Pen — freehand sketch on the LAYER layer.',
   line:'Line — press and drag. Snap keeps it on the grid.',
   rect:'Box — drag a rectangle. Good for rooms, equipment pads, zones.',
-  duct:'Duct run — click each corner along the run. Enter/double-click finishes · Esc cancels. Width set in the top bar (inches, to scale).',
+  duct:'Duct run — straight duct IS this tool: click each corner along the run, elbows form automatically. Rect/Round + width (in) in the top bar. Enter/double-click finishes · Esc cancels.',
   text:'Text — click where the note goes, then type. Resize later with [ and ].',
   erase:'Eraser — click or drag across anything to delete it. Ctrl+Z brings it back.',
   stamp:'Placing SYM — click the canvas to drop one. Keep clicking for more · Esc or V to stop.',
@@ -581,7 +613,8 @@ cv.addEventListener('pointermove', e=>{
       if(Math.abs(dx)+Math.abs(dy)>0.5) drag.moved = true;
       const g = objsG.querySelector(`[data-id="${o.id}"]`);
       if(g){
-        const base = (o.type==='symbol') ? `translate(${o.x+dx} ${o.y+dy}) rotate(${o.rot||0}) scale(${o.scale||1})`
+        const s = o.scale||1;
+        const base = (o.type==='symbol') ? `translate(${o.x+dx} ${o.y+dy}) rotate(${o.rot||0}) scale(${o.flip?-s:s} ${s})`
                                          : `translate(${dx} ${dy})`;
         g.setAttribute('transform', base);
       }
@@ -671,9 +704,9 @@ function drawDuctPreview(cursor){
   if(!ductPts) return;
   const q = snapAngle(ductPts[ductPts.length-1], snapPt(cursor));
   const pts = [...ductPts, q];
-  const col = LAYERS[S.layer].color, W = ductWidthWorld();
+  const col = LAYERS[S.layer].color, W = ductWidthWorld(), jn = S.ductRound?'round':'miter';
   liveG.innerHTML =
-    `<path d="${ptsD(pts)}" stroke="${col}" fill="none" stroke-width="${W}" opacity="0.28" stroke-linejoin="miter"/>` +
+    `<path d="${ptsD(pts)}" stroke="${col}" fill="none" stroke-width="${W}" opacity="0.28" stroke-linejoin="${jn}" stroke-linecap="${S.ductRound?'round':'butt'}"/>` +
     `<path d="${ptsD(pts)}" stroke="${col}" fill="none" stroke-width="1.4" stroke-dasharray="5 5"/>` +
     ductPts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="${3*px()+1}" fill="${col}"/>`).join('');
   $('#stHint').innerHTML = `Duct run — <b>${ductPts.length}</b> point${ductPts.length>1?'s':''} placed. <b>Enter</b>/double-click to finish · <b>Esc</b> cancels.`;
@@ -682,11 +715,16 @@ function drawDuctPreview(cursor){
 function finishDuct(keep){
   if(!ductPts){ return; }
   if(keep && ductPts.length>=2){
-    S.objects.push({id:S.nextId++, type:'duct', layer:S.layer, pts:ductPts, w:+ductWidthWorld().toFixed(2)});
+    S.objects.push({id:S.nextId++, type:'duct', layer:S.layer, pts:ductPts, w:+ductWidthWorld().toFixed(2), round:!!S.ductRound});
     commit(); render();
   }
   ductPts = null; liveG.innerHTML=''; hint();
 }
+
+$('#dRect').onclick=()=>{ S.ductRound=false; $('#dRect').classList.add('on'); $('#dRound').classList.remove('on');
+  if(ductPts) drawDuctPreview(ductPts[ductPts.length-1]); };
+$('#dRound').onclick=()=>{ S.ductRound=true; $('#dRound').classList.add('on'); $('#dRect').classList.remove('on');
+  if(ductPts) drawDuctPreview(ductPts[ductPts.length-1]); };
 
 function translateObj(o, dx, dy){
   switch(o.type){
@@ -744,6 +782,7 @@ document.addEventListener('keydown', e=>{
     case 'g': $('#bSnap').click(); break;
     case 'q': rotSel(-90); break;
     case 'w': rotSel(90); break;
+    case 'f': flipSel(); break;
     case '[': scaleSel(1/1.2); break;
     case ']': scaleSel(1.2); break;
   }
@@ -759,11 +798,13 @@ function dupSel(){ const o=selObj(); if(!o) return;
   const c = JSON.parse(JSON.stringify(o)); c.id=S.nextId++; translateObj(c, CELL, CELL);
   S.objects.push(c); S.selId=c.id; commit(); render(); }
 function rotSel(deg){ const o=selObj(); if(!o||o.type!=='symbol') return; o.rot=((o.rot||0)+deg)%360; commit(); render(); }
+function flipSel(){ const o=selObj(); if(!o||o.type!=='symbol') return; o.flip=!o.flip; commit(); render(); }
 function scaleSel(f){ const o=selObj(); if(!o) return;
   if(o.type==='symbol'){ o.scale=Math.min(6, Math.max(.3,(o.scale||1)*f)); commit(); render(); }
   else if(o.type==='text'){ o.size=Math.min(120, Math.max(8, o.size*f)); commit(); render(); } }
 
 $('#sRotL').onclick=()=>rotSel(-90); $('#sRotR').onclick=()=>rotSel(90);
+$('#sFlip').onclick=flipSel;
 $('#sSmall').onclick=()=>scaleSel(1/1.2); $('#sBig').onclick=()=>scaleSel(1.2);
 $('#sDup').onclick=dupSel; $('#sDel').onclick=delSel;
 $('#sEdit').onclick=()=>{ const o=selObj(); if(o&&o.type==='text') editText(o); };
