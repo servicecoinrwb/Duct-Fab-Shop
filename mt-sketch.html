@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MT Sketch — HVAC Drawing Board</title>
+<style>
+  :root{
+    --navy:#16263f; --navy-deep:#0c1626; --canvas:#101c30;
+    --sky:#6fb7e3; --cream:#f5efe3; --rust:#b5512f;
+    --line:rgba(111,183,227,.18); --dim:rgba(245,239,227,.55);
+    --font:ui-monospace,'Cascadia Code','SF Mono',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%; overflow:hidden;}
+  body{background:var(--navy-deep); color:var(--cream); font-family:var(--font); font-size:13px;}
+
+  /* ---------- Top bar ---------- */
+  #topbar{display:flex; align-items:center; gap:10px; height:46px; padding:0 12px;
+    background:var(--navy); border-bottom:1px solid var(--line); flex-wrap:nowrap; overflow-x:auto;}
+  #topbar::-webkit-scrollbar{height:0;}
+  .brand{display:flex; align-items:baseline; gap:7px; white-space:nowrap; margin-right:6px;}
+  .brand b{font-size:15px; letter-spacing:.12em; color:var(--cream);}
+  .brand span{font-size:10px; color:var(--sky); letter-spacing:.08em;}
+  .tb-group{display:flex; align-items:center; gap:4px; padding:0 8px; border-left:1px solid var(--line); white-space:nowrap;}
+  .tb-group label{font-size:10px; color:var(--dim); margin-right:2px;}
+  button{font-family:var(--font); font-size:12px; color:var(--cream); background:transparent;
+    border:1px solid transparent; border-radius:4px; padding:5px 8px; cursor:pointer; line-height:1;}
+  button:hover{background:rgba(111,183,227,.12);}
+  button:focus-visible{outline:2px solid var(--sky); outline-offset:1px;}
+  button.on{background:rgba(111,183,227,.18); border-color:var(--sky); color:var(--sky);}
+  button.warn:hover{background:rgba(181,81,47,.25);}
+  input[type=number]{width:52px; background:var(--navy-deep); color:var(--cream); border:1px solid var(--line);
+    border-radius:4px; padding:4px 5px; font-family:var(--font); font-size:12px;}
+  input[type=range]{accent-color:var(--sky); width:80px;}
+
+  /* layer chips */
+  .chip{display:flex; align-items:center; gap:5px; border:1px solid var(--line); border-radius:4px; padding:3px 7px; cursor:pointer;}
+  .chip .dot{width:9px; height:9px; border-radius:2px;}
+  .chip.active{border-color:var(--sky); background:rgba(111,183,227,.12);}
+  .chip .eye{opacity:.5; cursor:pointer; font-size:11px;}
+  .chip .eye.off{opacity:.18; text-decoration:line-through;}
+
+  /* ---------- Layout ---------- */
+  #main{display:flex; height:calc(100% - 46px);}
+
+  /* left tool strip */
+  #tools{display:flex; flex-direction:column; gap:2px; padding:8px 5px; background:var(--navy);
+    border-right:1px solid var(--line); width:46px; align-items:center;}
+  #tools button{width:36px; height:36px; display:flex; align-items:center; justify-content:center; padding:0;}
+  #tools svg{width:20px; height:20px; stroke:var(--cream); fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round;}
+  #tools button.on svg{stroke:var(--sky);}
+  #tools .spacer{flex:1;}
+
+  /* canvas */
+  #stage{position:relative; flex:1; background:var(--canvas); overflow:hidden;}
+  #cv{position:absolute; inset:0; width:100%; height:100%; touch-action:none; display:block;}
+  #cv.tool-pan{cursor:grab;} #cv.panning{cursor:grabbing;}
+  #cv.tool-pen,#cv.tool-line,#cv.tool-rect,#cv.tool-duct{cursor:crosshair;}
+  #cv.tool-text{cursor:text;} #cv.tool-erase{cursor:not-allowed;} #cv.tool-stamp{cursor:copy;}
+
+  /* status bar */
+  #status{position:absolute; left:0; right:0; bottom:0; display:flex; justify-content:space-between; gap:12px;
+    padding:5px 10px; font-size:11px; color:var(--dim); background:rgba(12,22,38,.85);
+    border-top:1px solid var(--line); pointer-events:none;}
+  #status b{color:var(--sky); font-weight:600;}
+
+  /* floating selection bar */
+  #selbar{position:absolute; top:10px; left:50%; transform:translateX(-50%); display:none; gap:2px;
+    background:var(--navy); border:1px solid var(--sky); border-radius:6px; padding:3px; z-index:5;}
+  #selbar.show{display:flex;}
+  #selbar button{font-size:11px; padding:5px 8px;}
+
+  /* toast */
+  #toast{position:absolute; bottom:34px; left:50%; transform:translateX(-50%); background:var(--navy);
+    border:1px solid var(--sky); color:var(--cream); border-radius:6px; padding:7px 14px; font-size:12px;
+    opacity:0; transition:opacity .25s; pointer-events:none; z-index:9; max-width:80%; text-align:center;}
+  #toast.show{opacity:1;}
+
+  /* ---------- Symbol palette ---------- */
+  #palette{width:184px; background:var(--navy); border-left:1px solid var(--line); display:flex; flex-direction:column;}
+  #palette h3{font-size:10px; letter-spacing:.14em; color:var(--sky); padding:10px 10px 4px;}
+  #palette .hint{font-size:10px; color:var(--dim); padding:0 10px 8px; line-height:1.45;}
+  #palgrid{display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:0 8px 10px; overflow-y:auto;}
+  #palgrid::-webkit-scrollbar{width:6px;} #palgrid::-webkit-scrollbar-thumb{background:var(--line); border-radius:3px;}
+  .pal{display:flex; flex-direction:column; align-items:center; gap:3px; padding:7px 2px 5px;
+    border:1px solid var(--line); border-radius:5px; background:transparent; color:var(--dim); font-size:9.5px;}
+  .pal svg{width:34px; height:34px; color:var(--cream);}
+  .pal:hover{border-color:var(--sky); color:var(--cream);}
+  .pal.on{border-color:var(--sky); background:rgba(111,183,227,.14); color:var(--sky);}
+  .pal.on svg{color:var(--sky);}
+
+  /* underlay panel */
+  #underpanel{border-top:1px solid var(--line); padding:9px 10px; font-size:11px;}
+  #underpanel h3{padding:0 0 4px;}
+  #underpanel .row{display:flex; align-items:center; gap:6px; margin:5px 0;}
+  #underpanel .hint{padding:2px 0 0; font-size:10px; color:var(--dim); line-height:1.45;}
+
+  /* help modal */
+  #help{position:fixed; inset:0; background:rgba(12,22,38,.8); display:none; align-items:center; justify-content:center; z-index:20;}
+  #help.show{display:flex;}
+  #help .card{background:var(--navy); border:1px solid var(--sky); border-radius:8px; padding:22px 26px; max-width:520px;
+    max-height:80vh; overflow-y:auto; line-height:1.7; font-size:12px;}
+  #help h2{color:var(--sky); font-size:14px; letter-spacing:.1em; margin-bottom:10px;}
+  #help kbd{background:var(--navy-deep); border:1px solid var(--line); border-radius:3px; padding:1px 5px; font-size:11px;}
+  #help p{margin:6px 0; color:var(--cream);}
+  #help .sec{color:var(--sky); margin-top:12px; font-weight:600;}
+
+  @media (max-width:820px){ #palette{width:150px;} .brand span{display:none;} }
+</style>
+</head>
+<body>
+
+<!-- ============ TOP BAR ============ -->
+<div id="topbar">
+  <div class="brand"><b>MT SKETCH</b><span>MECHANICAL TEMP · DRAWING BOARD</span></div>
+
+  <div class="tb-group">
+    <button id="bNew" class="warn" title="Clear the board and start over">New</button>
+    <button id="bSave" title="Download this drawing as a .json project file">Save</button>
+    <button id="bLoad" title="Open a saved .json project file">Open</button>
+    <button id="bPng" title="Export the current view as a PNG image">PNG ⤓</button>
+  </div>
+
+  <div class="tb-group">
+    <button id="bUndo" title="Undo (Ctrl+Z)">↶</button>
+    <button id="bRedo" title="Redo (Ctrl+Y)">↷</button>
+  </div>
+
+  <div class="tb-group" id="layerGroup" title="New objects land on the active layer. Click a chip to switch; click the eye to hide a layer.">
+    <label>LAYER</label>
+    <!-- chips injected -->
+  </div>
+
+  <div class="tb-group">
+    <button id="bSnap" class="on" title="Snap points to the grid and duct runs to 45° angles (G)">Snap</button>
+    <button id="bGrid" class="on" title="Show / hide the grid. One square = 1 ft.">Grid</button>
+  </div>
+
+  <div class="tb-group" id="ductOpts" style="display:none">
+    <label title="Nominal duct width. Grid squares are 1 ft, so the run is drawn to scale.">DUCT W (in)</label>
+    <input type="number" id="ductW" value="8" min="4" max="60" step="1">
+  </div>
+
+  <div class="tb-group">
+    <button id="bHelp" title="Shortcuts and how this works">?</button>
+  </div>
+</div>
+
+<div id="main">
+
+  <!-- ============ TOOL STRIP ============ -->
+  <div id="tools">
+    <button data-tool="select" class="on" title="Select / Move (V) — click an object, drag to move">
+      <svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-3 6z"/></svg></button>
+    <button data-tool="pan" title="Pan (H) — drag to move around. Scroll wheel zooms anytime.">
+      <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg></button>
+    <button data-tool="pen" title="Pen (P) — freehand sketch">
+      <svg viewBox="0 0 24 24"><path d="M4 20c4-1 3-4 6-6s5-5 8-9M4 20l1-4 3 3z"/></svg></button>
+    <button data-tool="line" title="Line (L) — drag a straight line">
+      <svg viewBox="0 0 24 24"><path d="M4 20L20 4"/></svg></button>
+    <button data-tool="rect" title="Box (B) — drag a rectangle (rooms, units, zones)">
+      <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/></svg></button>
+    <button data-tool="duct" title="Duct run (D) — click corners along the run, double-click or Enter to finish, Esc cancels">
+      <svg viewBox="0 0 24 24"><path d="M3 8h9v8h9M3 12h5v8"/><path d="M3 8v4M12 16h4"/></svg></button>
+    <button data-tool="text" title="Text (T) — click to place a note">
+      <svg viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg></button>
+    <button data-tool="erase" title="Eraser (E) — click or drag over objects to delete them">
+      <svg viewBox="0 0 24 24"><path d="M4 16l8-8 6 6-6 6H8z"/><path d="M4 20h16"/></svg></button>
+    <div class="spacer"></div>
+  </div>
+
+  <!-- ============ CANVAS ============ -->
+  <div id="stage">
+    <svg id="cv" xmlns="http://www.w3.org/2000/svg">
+      <defs id="defs"></defs>
+      <g id="gridg"></g>
+      <g id="underg"></g>
+      <g id="objs"></g>
+      <g id="liveg"></g>
+      <g id="selg"></g>
+      <g id="emptyg"></g>
+    </svg>
+
+    <div id="selbar">
+      <button id="sRotL" title="Rotate 90° counter-clockwise (Q)">⟲ 90</button>
+      <button id="sRotR" title="Rotate 90° clockwise (W)">⟳ 90</button>
+      <button id="sSmall" title="Smaller ( [ )">−</button>
+      <button id="sBig" title="Bigger ( ] )">＋</button>
+      <button id="sEdit" title="Edit text">✎</button>
+      <button id="sDup" title="Duplicate (Ctrl+D)">⧉</button>
+      <button id="sDel" class="warn" title="Delete (Del)">🗑</button>
+    </div>
+
+    <div id="status">
+      <span id="stHint">Pick a tool on the left, or load a floor plan under <b>Underlay</b>.</span>
+      <span id="stInfo"></span>
+    </div>
+    <div id="toast"></div>
+  </div>
+
+  <!-- ============ PALETTE ============ -->
+  <div id="palette">
+    <h3>HVAC SYMBOLS</h3>
+    <div class="hint">Click a symbol, then click the canvas to place it — keep clicking to place more. <b>Esc</b> stops. Symbols take the active layer's color.</div>
+    <div id="palgrid"></div>
+
+    <div id="underpanel">
+      <h3 style="color:var(--sky); font-size:10px; letter-spacing:.14em;">UNDERLAY</h3>
+      <div class="row"><button id="bUnder" style="border:1px solid var(--line); width:100%;">Load floor plan photo…</button></div>
+      <div class="row" id="underCtl" style="display:none">
+        <label style="font-size:10px; color:var(--dim);">Opacity</label>
+        <input type="range" id="underOp" min="10" max="100" value="45">
+        <button id="bUnderX" class="warn" title="Remove underlay">✕</button>
+      </div>
+      <div class="hint">Drop a photo of the floor plan or job site behind your drawing, then sketch the layout on top. It's included in PNG exports.</div>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileUnder" accept="image/*" hidden>
+<input type="file" id="fileJson" accept=".json,application/json" hidden>
+
+<!-- ============ HELP ============ -->
+<div id="help">
+  <div class="card">
+    <h2>MT SKETCH — HOW THIS WORKS</h2>
+    <p>A quick markup board for site surveys and quote sketches. Grid squares are <b>1 ft</b> nominal, so duct widths draw roughly to scale.</p>
+    <p class="sec">TOOLS</p>
+    <p><kbd>V</kbd> Select/Move · <kbd>H</kbd> Pan · <kbd>P</kbd> Pen · <kbd>L</kbd> Line · <kbd>B</kbd> Box · <kbd>D</kbd> Duct run · <kbd>T</kbd> Text · <kbd>E</kbd> Eraser</p>
+    <p class="sec">DUCT RUNS</p>
+    <p>Click each corner along the run. <kbd>Enter</kbd> or double-click finishes, <kbd>Esc</kbd> cancels. With Snap on, segments lock to 45° angles. Set the width (inches) in the top bar while the tool is active.</p>
+    <p class="sec">LAYERS</p>
+    <p><b style="color:var(--sky)">Existing</b> (sky) for what's there now, <b style="color:var(--rust)">Proposed</b> (rust) for new work, <b>Notes</b> (cream) for dimensions and callouts. The eye icon hides a layer without deleting anything.</p>
+    <p class="sec">SELECTION</p>
+    <p>Click an object with Select, then drag to move. <kbd>Q</kbd>/<kbd>W</kbd> rotate symbols, <kbd>[</kbd>/<kbd>]</kbd> resize, <kbd>Ctrl+D</kbd> duplicate, <kbd>Del</kbd> delete.</p>
+    <p class="sec">VIEW & FILES</p>
+    <p>Scroll wheel zooms at the cursor; middle-drag or hold <kbd>Space</kbd> to pan. <kbd>Ctrl+Z</kbd>/<kbd>Y</kbd> undo/redo. The board autosaves in this browser; use Save/Open for .json project files and PNG ⤓ to export exactly what's on screen.</p>
+    <p style="margin-top:14px;"><button id="bHelpX" style="border:1px solid var(--sky); width:100%;">Close</button></p>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =====================================================================
+   MT SKETCH v1 — single-file HVAC drawing board
+   World units: 20 units = 1 ft (one grid cell). Duct width input is inches.
+   ===================================================================== */
+
+const CELL = 20;                       // world units per foot / grid cell
+const LAYERS = {
+  ex:   { name:'Existing', color:'#6fb7e3' },
+  prop: { name:'Proposed', color:'#b5512f' },
+  note: { name:'Notes',    color:'#f5efe3' },
+};
+
+/* ---------------- state ---------------- */
+const S = {
+  objects: [],            // drawing objects
+  nextId: 1,
+  tool: 'select',
+  stampSym: null,         // active palette symbol when tool === 'stamp'
+  layer: 'prop',
+  hidden: {},             // layerKey -> true when hidden
+  selId: null,
+  snap: true,
+  grid: true,
+  vb: { x:-100, y:-80, w:1200, h:800 },
+  underlay: null,         // {href,x,y,w,h,op}
+  undo: [], redo: [],
+};
+
+/* ---------------- dom ---------------- */
+const $  = s => document.querySelector(s);
+const cv = $('#cv'), objsG = $('#objs'), liveG = $('#liveg'), selG = $('#selg'),
+      gridG = $('#gridg'), underG = $('#underg'), emptyG = $('#emptyg');
+
+/* ---------------- symbol library ----------------
+   Each symbol lives in a 64×64 box centered on 0,0 and strokes currentColor. */
+const SYMS = [
+ ['supply','Supply diff','<rect x="-22" y="-22" width="44" height="44"/><path d="M-22 -22 L22 22 M22 -22 L-22 22"/>'],
+ ['return','Return grille','<rect x="-22" y="-22" width="44" height="44"/><path d="M-22 -22 L22 22"/>'],
+ ['grille','Sidewall grille','<rect x="-24" y="-14" width="48" height="28"/><path d="M-17 -7h34M-17 0h34M-17 7h34"/>'],
+ ['rtu','RTU','<rect x="-28" y="-18" width="56" height="36"/><circle cx="-11" cy="0" r="9"/><path d="M-11 -9v18M-20 0h18"/><text x="14" y="4" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">RTU</text>'],
+ ['furnace','Furnace','<rect x="-16" y="-24" width="32" height="48"/><path d="M0 12c-7-4-6-9-1-13 1 4 6 4 6 9 0 3-2 5-5 4z"/><path d="M-16 -12h32"/><text x="0" y="-16" font-size="10" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">FAU</text>'],
+ ['cond','Condenser','<rect x="-22" y="-22" width="44" height="44"/><circle cx="0" cy="0" r="15"/><path d="M0 0L9 -12M0 0L-14 -4M0 0L5 14"/><text x="0" y="30" font-size="0" fill="none"></text>'],
+ ['coil','Evap coil','<rect x="-22" y="-16" width="44" height="32"/><path d="M-14 16L0 -16L14 16"/>'],
+ ['tstat','T-stat','<circle cx="0" cy="0" r="15"/><text x="0" y="5" font-size="15" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">T</text>'],
+ ['damper','Damper','<path d="M-24 -10h48M-24 10h48"/><path d="M-10 10L10 -10"/><circle cx="10" cy="-10" r="3"/>'],
+ ['takeoff','Rnd takeoff','<circle cx="0" cy="0" r="14"/><path d="M-14 0h28M0 -22v8"/>'],
+ ['elbow','Elbow 90','<path d="M-22 -18h24v40M-22 -2h8v24"/>'],
+ ['tee','Duct tee','<path d="M-24 -12h48M-24 4h16v16M24 4h-16v16"/>'],
+ ['trans','Transition','<path d="M-22 -16h20l24 8v16l-24 8h-20z"/>'],
+ ['flex','Flex duct','<path d="M-24 -8v16M24 -8v16"/><path d="M-24 0c4-8 8 8 12 0s8 8 12 0 8 8 12 0 8 8 12 0"/>'],
+ ['ef','Exhaust fan','<rect x="-18" y="-18" width="36" height="36"/><circle cx="0" cy="2" r="10"/><path d="M0 -8v-14M-4 -18l4-4 4 4"/><text x="0" y="6" font-size="9" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">EF</text>'],
+ ['vav','VAV box','<rect x="-24" y="-14" width="48" height="28"/><text x="0" y="4" font-size="12" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">VAV</text>'],
+ ['ms','Mini-split','<rect x="-24" y="-12" width="48" height="24" rx="6"/><path d="M-16 5h32M-16 -2h32"/><text x="0" y="-15" font-size="0"></text>'],
+ ['wh','Water htr','<rect x="-12" y="-22" width="24" height="44" rx="10"/><text x="0" y="4" font-size="10" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">WH</text>'],
+ ['boiler','Boiler','<rect x="-18" y="-20" width="36" height="40"/><path d="M-12 8c3-4 6 4 9 0s6 4 9 0"/><text x="0" y="-6" font-size="10" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="monospace">BLR</text>'],
+ ['arrow','Airflow','<path d="M-22 0h38M8 -9l14 9-14 9"/>'],
+];
+
+function buildDefs(){
+  $('#defs').innerHTML = SYMS.map(([id,,body]) =>
+    `<g id="sym-${id}" stroke="currentColor" fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${body}</g>`
+  ).join('');
+}
+
+function buildPalette(){
+  $('#palgrid').innerHTML = SYMS.map(([id,label]) =>
+    `<button class="pal" data-sym="${id}" title="Place: ${label}">
+       <svg viewBox="-34 -34 68 68"><use href="#sym-${id}"/></svg><span>${label}</span>
+     </button>`).join('');
+  $('#palgrid').addEventListener('click', e=>{
+    const b = e.target.closest('.pal'); if(!b) return;
+    setTool('stamp', b.dataset.sym);
+  });
+}
+
+/* ---------------- layers UI ---------------- */
+function buildLayers(){
+  const g = $('#layerGroup');
+  g.querySelectorAll('.chip').forEach(c=>c.remove());
+  for(const key of Object.keys(LAYERS)){
+    const L = LAYERS[key];
+    const c = document.createElement('div');
+    c.className = 'chip' + (S.layer===key?' active':'');
+    c.innerHTML = `<span class="dot" style="background:${L.color}"></span>${L.name}
+                   <span class="eye ${S.hidden[key]?'off':''}" title="Show / hide this layer">👁</span>`;
+    c.addEventListener('click', e=>{
+      if(e.target.classList.contains('eye')){
+        S.hidden[key] = !S.hidden[key]; buildLayers(); render();
+        toast(S.hidden[key] ? `${L.name} layer hidden — objects are still there, just not shown.` : `${L.name} layer visible.`);
+      } else { S.layer = key; buildLayers(); hint(); }
+    });
+    g.appendChild(c);
+  }
+}
+
+/* ---------------- view helpers ---------------- */
+function applyVB(){ cv.setAttribute('viewBox', `${S.vb.x} ${S.vb.y} ${S.vb.w} ${S.vb.h}`); drawGrid(); }
+function toWorld(e){
+  const r = cv.getBoundingClientRect();
+  return { x: S.vb.x + (e.clientX - r.left)/r.width * S.vb.w,
+           y: S.vb.y + (e.clientY - r.top )/r.height* S.vb.h };
+}
+function snapPt(p){
+  if(!S.snap) return p;
+  return { x: Math.round(p.x/ (CELL/2))*(CELL/2), y: Math.round(p.y/(CELL/2))*(CELL/2) };
+}
+function px(){ // world units per screen pixel (for hit slop, handles)
+  return S.vb.w / cv.getBoundingClientRect().width;
+}
+
+function drawGrid(){
+  if(!S.grid){ gridG.innerHTML=''; return; }
+  const {x,y,w,h} = S.vb;
+  if (w / CELL > 400){ gridG.innerHTML=''; return; }  // too far out — skip grid
+  let out = '';
+  const x0 = Math.floor(x/CELL)*CELL, y0 = Math.floor(y/CELL)*CELL;
+  for(let gx=x0; gx<=x+w; gx+=CELL){
+    const major = Math.round(gx/CELL) % 5 === 0;
+    out += `<line x1="${gx}" y1="${y}" x2="${gx}" y2="${y+h}" stroke="rgba(111,183,227,${major?0.14:0.06})" stroke-width="${px()}"/>`;
+  }
+  for(let gy=y0; gy<=y+h; gy+=CELL){
+    const major = Math.round(gy/CELL) % 5 === 0;
+    out += `<line x1="${x}" y1="${gy}" x2="${x+w}" y2="${gy}" stroke="rgba(111,183,227,${major?0.14:0.06})" stroke-width="${px()}"/>`;
+  }
+  gridG.innerHTML = out;
+}
+
+/* ---------------- rendering ---------------- */
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+
+function ptsD(pts){ return 'M' + pts.map(p=>`${p.x} ${p.y}`).join(' L '); }
+
+function renderObj(o){
+  const col = LAYERS[o.layer].color;
+  const hit = `stroke="rgba(0,0,0,0)" fill="none" style="pointer-events:stroke"`;
+  switch(o.type){
+    case 'path': {
+      const d = ptsD(o.pts);
+      return `<g data-id="${o.id}"><path d="${d}" ${hit} stroke-width="14"/><path d="${d}" stroke="${col}" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+    }
+    case 'line': {
+      const d = `M${o.x1} ${o.y1}L${o.x2} ${o.y2}`;
+      return `<g data-id="${o.id}"><path d="${d}" ${hit} stroke-width="14"/><path d="${d}" stroke="${col}" fill="none" stroke-width="2.4" stroke-linecap="round"/></g>`;
+    }
+    case 'rect':
+      return `<g data-id="${o.id}"><rect x="${o.x}" y="${o.y}" width="${o.w}" height="${o.h}" fill="rgba(0,0,0,0)" stroke="${col}" stroke-width="2.4"/></g>`;
+    case 'text':
+      return `<g data-id="${o.id}"><text x="${o.x}" y="${o.y}" font-size="${o.size}" fill="${col}" font-family="ui-monospace,Menlo,monospace" font-weight="600" style="user-select:none">${esc(o.text)}</text></g>`;
+    case 'duct': {
+      const d = ptsD(o.pts), W = o.w, inner = Math.max(0, W - 5);
+      const body = W >= 10 && inner > 0
+        ? `<mask id="dm${o.id}"><path d="${d}" stroke="white" stroke-width="${W}" fill="none" stroke-linejoin="miter"/><path d="${d}" stroke="black" stroke-width="${inner}" fill="none" stroke-linejoin="miter"/></mask>
+           <path d="${d}" stroke="${col}" stroke-width="${W}" fill="none" stroke-linejoin="miter" mask="url(#dm${o.id})"/>
+           <path d="${d}" stroke="${col}" stroke-width="1" fill="none" stroke-dasharray="6 6" opacity="0.45"/>`
+        : `<path d="${d}" stroke="${col}" stroke-width="${Math.max(3,W)}" fill="none" stroke-linejoin="miter" opacity="0.9"/>`;
+      return `<g data-id="${o.id}"><path d="${d}" ${hit} stroke-width="${Math.max(W,16)}"/>${body}</g>`;
+    }
+    case 'symbol': {
+      const s = o.scale || 1;
+      return `<g data-id="${o.id}" transform="translate(${o.x} ${o.y}) rotate(${o.rot||0}) scale(${s})" color="${col}">
+                <rect x="-32" y="-32" width="64" height="64" fill="rgba(0,0,0,0)" stroke="none"/>
+                <use href="#sym-${o.sym}"/></g>`;
+    }
+  }
+  return '';
+}
+
+function render(){
+  objsG.innerHTML = S.objects.filter(o=>!S.hidden[o.layer]).map(renderObj).join('');
+  renderUnderlay(); renderSel(); renderEmpty();
+}
+
+function renderUnderlay(){
+  underG.innerHTML = S.underlay
+    ? `<image href="${S.underlay.href}" x="${S.underlay.x}" y="${S.underlay.y}" width="${S.underlay.w}" height="${S.underlay.h}" opacity="${S.underlay.op}" preserveAspectRatio="xMidYMid meet"/>`
+    : '';
+  $('#underCtl').style.display = S.underlay ? 'flex' : 'none';
+}
+
+function renderEmpty(){
+  emptyG.innerHTML = (!S.objects.length && !S.underlay)
+    ? `<text x="${S.vb.x + S.vb.w/2}" y="${S.vb.y + S.vb.h/2}" text-anchor="middle" fill="rgba(245,239,227,.28)" font-size="${16*px()*1.2 + 10}" font-family="ui-monospace,monospace">Blank board — grid squares = 1 ft. Load a floor plan photo (Underlay) or pick a tool.</text>`
+    : '';
+}
+
+function renderSel(){
+  selG.innerHTML = '';
+  const bar = $('#selbar');
+  const o = S.objects.find(x=>x.id===S.selId);
+  if(!o){ bar.classList.remove('show'); return; }
+  const el = objsG.querySelector(`[data-id="${o.id}"]`);
+  if(!el){ bar.classList.remove('show'); return; }
+  const b = el.getBBox();
+  const m = 6*px();
+  selG.innerHTML = `<rect x="${b.x-m}" y="${b.y-m}" width="${b.width+2*m}" height="${b.height+2*m}"
+    fill="none" stroke="#6fb7e3" stroke-width="${1.4*px()}" stroke-dasharray="${5*px()} ${4*px()}"/>`;
+  bar.classList.add('show');
+  const isSym = o.type==='symbol', isTxt = o.type==='text';
+  $('#sRotL').style.display = $('#sRotR').style.display = isSym ? '' : 'none';
+  $('#sSmall').style.display = $('#sBig').style.display = (isSym||isTxt) ? '' : 'none';
+  $('#sEdit').style.display = isTxt ? '' : 'none';
+}
+
+/* ---------------- undo / autosave ---------------- */
+function snapshot(){ return JSON.stringify({objects:S.objects, nextId:S.nextId, underlay:S.underlay}); }
+function commit(){
+  S.undo.push(snapshot()); if(S.undo.length>100) S.undo.shift();
+  S.redo.length = 0;
+  autosave();
+}
+function restore(json){
+  try{ const d = JSON.parse(json);
+    S.objects = d.objects||[]; S.nextId = d.nextId||1; S.underlay = d.underlay||null;
+    S.selId = null; render();
+  }catch(e){ console.error(e); }
+}
+function doUndo(){ if(!S.undo.length) return toast('Nothing to undo.');
+  S.redo.push(snapshot()); restore(S.undo.pop()); autosave(); }
+function doRedo(){ if(!S.redo.length) return toast('Nothing to redo.');
+  S.undo.push(snapshot()); restore(S.redo.pop()); autosave(); }
+
+let saveT = null;
+function autosave(){
+  clearTimeout(saveT);
+  saveT = setTimeout(()=>{ try{ localStorage.setItem('mt-sketch-v1', snapshot()); }catch(e){} }, 400);
+}
+
+/* ---------------- tool switching ---------------- */
+function setTool(t, sym){
+  finishDuct(false);
+  S.tool = t; S.stampSym = sym||null;
+  document.querySelectorAll('#tools [data-tool]').forEach(b=>b.classList.toggle('on', b.dataset.tool===t));
+  document.querySelectorAll('.pal').forEach(b=>b.classList.toggle('on', t==='stamp' && b.dataset.sym===sym));
+  cv.className = 'tool-'+t;
+  $('#ductOpts').style.display = (t==='duct') ? 'flex' : 'none';
+  if(t!=='select'){ S.selId=null; renderSel(); }
+  hint();
+}
+
+const HINTS = {
+  select:'Select — click an object, drag to move. Del deletes; Q/W rotate symbols; [ ] resize.',
+  pan:'Pan — drag to move around. Scroll wheel zooms at the cursor.',
+  pen:'Pen — freehand sketch on the LAYER layer.',
+  line:'Line — press and drag. Snap keeps it on the grid.',
+  rect:'Box — drag a rectangle. Good for rooms, equipment pads, zones.',
+  duct:'Duct run — click each corner along the run. Enter/double-click finishes · Esc cancels. Width set in the top bar (inches, to scale).',
+  text:'Text — click where the note goes, then type. Resize later with [ and ].',
+  erase:'Eraser — click or drag across anything to delete it. Ctrl+Z brings it back.',
+  stamp:'Placing SYM — click the canvas to drop one. Keep clicking for more · Esc or V to stop.',
+};
+function hint(){
+  let h = HINTS[S.tool] || '';
+  h = h.replace('LAYER', LAYERS[S.layer].name)
+       .replace('SYM', S.stampSym ? (SYMS.find(s=>s[0]===S.stampSym)||['','symbol'])[1] : 'symbol');
+  $('#stHint').innerHTML = h;
+}
+
+/* ---------------- toast ---------------- */
+let toastT=null;
+function toast(msg){
+  const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+/* ---------------- pointer interaction ---------------- */
+let drag = null;        // current drag op
+let ductPts = null;     // in-progress duct vertices
+
+cv.addEventListener('pointerdown', e=>{
+  if(e.button===1 || S.tool==='pan' || spaceHeld){        // pan
+    drag = { kind:'pan', sx:e.clientX, sy:e.clientY, vb:{...S.vb} };
+    cv.classList.add('panning'); cv.setPointerCapture(e.pointerId); e.preventDefault(); return;
+  }
+  if(e.button!==0) return;
+  const w = toWorld(e), p = snapPt(w);
+  cv.setPointerCapture(e.pointerId);
+
+  switch(S.tool){
+    case 'select': {
+      const g = e.target.closest('[data-id]');
+      if(g){
+        S.selId = +g.dataset.id; renderSel();
+        drag = { kind:'move', start:w, moved:false };
+      } else { S.selId = null; renderSel(); }
+      break;
+    }
+    case 'pen':
+      drag = { kind:'pen', pts:[w] }; break;
+    case 'line':
+      drag = { kind:'line', a:p }; break;
+    case 'rect':
+      drag = { kind:'rect', a:p }; break;
+    case 'erase': {
+      drag = { kind:'erase' }; eraseAt(e); break;
+    }
+    case 'text': {
+      const txt = prompt('Note text:'); if(txt && txt.trim()){
+        S.objects.push({id:S.nextId++, type:'text', layer:S.layer, x:p.x, y:p.y, size:16, text:txt.trim()});
+        commit(); render();
+      }
+      break;
+    }
+    case 'stamp': {
+      S.objects.push({id:S.nextId++, type:'symbol', layer:S.layer, sym:S.stampSym, x:p.x, y:p.y, rot:0, scale:1});
+      commit(); render(); break;
+    }
+    case 'duct': {
+      if(!ductPts){ ductPts = [p]; }
+      else {
+        const q = snapAngle(ductPts[ductPts.length-1], p);
+        ductPts.push(q);
+      }
+      drawDuctPreview(w);
+      break;
+    }
+  }
+});
+
+cv.addEventListener('pointermove', e=>{
+  const w = toWorld(e), p = snapPt(w);
+  $('#stInfo').textContent = `${(w.x/CELL).toFixed(1)} ft, ${(w.y/CELL).toFixed(1)} ft · zoom ${(1200/S.vb.w*100).toFixed(0)}%`;
+
+  if(ductPts && S.tool==='duct'){ drawDuctPreview(w); }
+  if(!drag) return;
+
+  switch(drag.kind){
+    case 'pan': {
+      const k = S.vb.w / cv.getBoundingClientRect().width;
+      S.vb.x = drag.vb.x - (e.clientX-drag.sx)*k;
+      S.vb.y = drag.vb.y - (e.clientY-drag.sy)*k;
+      applyVB(); renderEmpty(); break;
+    }
+    case 'move': {
+      const o = S.objects.find(x=>x.id===S.selId); if(!o) break;
+      const dx = w.x-drag.start.x, dy = w.y-drag.start.y;
+      if(Math.abs(dx)+Math.abs(dy)>0.5) drag.moved = true;
+      const g = objsG.querySelector(`[data-id="${o.id}"]`);
+      if(g){
+        const base = (o.type==='symbol') ? `translate(${o.x+dx} ${o.y+dy}) rotate(${o.rot||0}) scale(${o.scale||1})`
+                                         : `translate(${dx} ${dy})`;
+        g.setAttribute('transform', base);
+      }
+      drag.dx=dx; drag.dy=dy; selG.innerHTML=''; break;
+    }
+    case 'pen': {
+      const last = drag.pts[drag.pts.length-1];
+      if(Math.hypot(w.x-last.x, w.y-last.y) > 1.5*px()) drag.pts.push(w);
+      liveG.innerHTML = `<path d="${ptsD(drag.pts)}" stroke="${LAYERS[S.layer].color}" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+      break;
+    }
+    case 'line': {
+      const b = snapAngle(drag.a, p);
+      drag.b = b;
+      liveG.innerHTML = `<path d="M${drag.a.x} ${drag.a.y}L${b.x} ${b.y}" stroke="${LAYERS[S.layer].color}" fill="none" stroke-width="2.4" stroke-linecap="round"/>`;
+      break;
+    }
+    case 'rect': {
+      drag.b = p;
+      const x=Math.min(drag.a.x,p.x), y=Math.min(drag.a.y,p.y), rw=Math.abs(p.x-drag.a.x), rh=Math.abs(p.y-drag.a.y);
+      liveG.innerHTML = `<rect x="${x}" y="${y}" width="${rw}" height="${rh}" fill="none" stroke="${LAYERS[S.layer].color}" stroke-width="2.4"/>`;
+      break;
+    }
+    case 'erase': eraseAt(e); break;
+  }
+});
+
+cv.addEventListener('pointerup', e=>{
+  if(!drag) return;
+  const d = drag; drag = null;
+  cv.classList.remove('panning');
+  liveG.innerHTML = '';
+  switch(d.kind){
+    case 'move': {
+      const o = S.objects.find(x=>x.id===S.selId);
+      if(o && d.moved){ translateObj(o, d.dx||0, d.dy||0); commit(); }
+      render(); break;
+    }
+    case 'pen':
+      if(d.pts.length>1){ S.objects.push({id:S.nextId++, type:'path', layer:S.layer, pts:d.pts.map(q=>({x:+q.x.toFixed(1),y:+q.y.toFixed(1)}))}); commit(); render(); }
+      break;
+    case 'line':
+      if(d.b && (d.a.x!==d.b.x || d.a.y!==d.b.y)){ S.objects.push({id:S.nextId++, type:'line', layer:S.layer, x1:d.a.x,y1:d.a.y,x2:d.b.x,y2:d.b.y}); commit(); render(); }
+      break;
+    case 'rect':
+      if(d.b){ const x=Math.min(d.a.x,d.b.x), y=Math.min(d.a.y,d.b.y), rw=Math.abs(d.b.x-d.a.x), rh=Math.abs(d.b.y-d.a.y);
+        if(rw>2 && rh>2){ S.objects.push({id:S.nextId++, type:'rect', layer:S.layer, x,y,w:rw,h:rh}); commit(); render(); } }
+      break;
+  }
+});
+
+cv.addEventListener('dblclick', e=>{
+  if(S.tool==='duct'){ e.preventDefault(); finishDuct(true); return; }
+  if(S.tool==='select'){
+    const g = e.target.closest('[data-id]');
+    const o = g && S.objects.find(x=>x.id===+g.dataset.id);
+    if(o && o.type==='text') editText(o);
+  }
+});
+
+function eraseAt(e){
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const g = el && el.closest ? el.closest('[data-id]') : null;
+  if(g){
+    const id = +g.dataset.id;
+    S.objects = S.objects.filter(o=>o.id!==id);
+    if(S.selId===id) S.selId=null;
+    commit(); render();
+  }
+}
+
+/* 45° angle snap for lines & duct segments */
+function snapAngle(a, b){
+  if(!S.snap) return b;
+  const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy);
+  if(len<1) return b;
+  const ang = Math.round(Math.atan2(dy,dx) / (Math.PI/4)) * (Math.PI/4);
+  return snapPt({ x:a.x + Math.cos(ang)*len, y:a.y + Math.sin(ang)*len });
+}
+
+function ductWidthWorld(){
+  const inches = parseFloat($('#ductW').value)||8;
+  return inches/12 * CELL;
+}
+
+function drawDuctPreview(cursor){
+  if(!ductPts) return;
+  const q = snapAngle(ductPts[ductPts.length-1], snapPt(cursor));
+  const pts = [...ductPts, q];
+  const col = LAYERS[S.layer].color, W = ductWidthWorld();
+  liveG.innerHTML =
+    `<path d="${ptsD(pts)}" stroke="${col}" fill="none" stroke-width="${W}" opacity="0.28" stroke-linejoin="miter"/>` +
+    `<path d="${ptsD(pts)}" stroke="${col}" fill="none" stroke-width="1.4" stroke-dasharray="5 5"/>` +
+    ductPts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="${3*px()+1}" fill="${col}"/>`).join('');
+  $('#stHint').innerHTML = `Duct run — <b>${ductPts.length}</b> point${ductPts.length>1?'s':''} placed. <b>Enter</b>/double-click to finish · <b>Esc</b> cancels.`;
+}
+
+function finishDuct(keep){
+  if(!ductPts){ return; }
+  if(keep && ductPts.length>=2){
+    S.objects.push({id:S.nextId++, type:'duct', layer:S.layer, pts:ductPts, w:+ductWidthWorld().toFixed(2)});
+    commit(); render();
+  }
+  ductPts = null; liveG.innerHTML=''; hint();
+}
+
+function translateObj(o, dx, dy){
+  switch(o.type){
+    case 'path': case 'duct': o.pts = o.pts.map(p=>({x:p.x+dx, y:p.y+dy})); break;
+    case 'line': o.x1+=dx; o.y1+=dy; o.x2+=dx; o.y2+=dy; break;
+    default: o.x+=dx; o.y+=dy;
+  }
+}
+
+function editText(o){
+  const t = prompt('Edit note:', o.text);
+  if(t!==null && t.trim()){ o.text=t.trim(); commit(); render(); }
+}
+
+/* ---------------- zoom ---------------- */
+cv.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const w = toWorld(e);
+  const f = e.deltaY>0 ? 1.12 : 1/1.12;
+  const nw = Math.min(24000, Math.max(120, S.vb.w*f));
+  const k = nw / S.vb.w;
+  S.vb.x = w.x - (w.x - S.vb.x)*k;
+  S.vb.y = w.y - (w.y - S.vb.y)*k;
+  S.vb.w = nw; S.vb.h = S.vb.h*k;
+  applyVB(); renderSel(); renderEmpty();
+}, {passive:false});
+
+/* ---------------- keyboard ---------------- */
+let spaceHeld = false;
+document.addEventListener('keydown', e=>{
+  if(e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA') return;
+  if(e.code==='Space'){ spaceHeld=true; cv.classList.add('tool-pan'); e.preventDefault(); return; }
+  if(e.ctrlKey || e.metaKey){
+    if(e.key==='z'){ e.preventDefault(); doUndo(); return; }
+    if(e.key==='y' || (e.key==='Z'&&e.shiftKey)){ e.preventDefault(); doRedo(); return; }
+    if(e.key==='d'){ e.preventDefault(); dupSel(); return; }
+    return;
+  }
+  switch(e.key){
+    case 'Escape':
+      if(ductPts) finishDuct(false);
+      else if(S.tool==='stamp') setTool('select');
+      else { S.selId=null; renderSel(); }
+      break;
+    case 'Enter': if(ductPts) finishDuct(true); break;
+    case 'Delete': case 'Backspace': delSel(); break;
+    case 'v': setTool('select'); break;
+    case 'h': setTool('pan'); break;
+    case 'p': setTool('pen'); break;
+    case 'l': setTool('line'); break;
+    case 'b': setTool('rect'); break;
+    case 'd': setTool('duct'); break;
+    case 't': setTool('text'); break;
+    case 'e': setTool('erase'); break;
+    case 'g': $('#bSnap').click(); break;
+    case 'q': rotSel(-90); break;
+    case 'w': rotSel(90); break;
+    case '[': scaleSel(1/1.2); break;
+    case ']': scaleSel(1.2); break;
+  }
+});
+document.addEventListener('keyup', e=>{
+  if(e.code==='Space'){ spaceHeld=false; if(S.tool!=='pan') cv.className='tool-'+S.tool; }
+});
+
+/* ---------------- selection ops ---------------- */
+function selObj(){ return S.objects.find(o=>o.id===S.selId); }
+function delSel(){ const o=selObj(); if(!o) return; S.objects=S.objects.filter(x=>x.id!==o.id); S.selId=null; commit(); render(); }
+function dupSel(){ const o=selObj(); if(!o) return;
+  const c = JSON.parse(JSON.stringify(o)); c.id=S.nextId++; translateObj(c, CELL, CELL);
+  S.objects.push(c); S.selId=c.id; commit(); render(); }
+function rotSel(deg){ const o=selObj(); if(!o||o.type!=='symbol') return; o.rot=((o.rot||0)+deg)%360; commit(); render(); }
+function scaleSel(f){ const o=selObj(); if(!o) return;
+  if(o.type==='symbol'){ o.scale=Math.min(6, Math.max(.3,(o.scale||1)*f)); commit(); render(); }
+  else if(o.type==='text'){ o.size=Math.min(120, Math.max(8, o.size*f)); commit(); render(); } }
+
+$('#sRotL').onclick=()=>rotSel(-90); $('#sRotR').onclick=()=>rotSel(90);
+$('#sSmall').onclick=()=>scaleSel(1/1.2); $('#sBig').onclick=()=>scaleSel(1.2);
+$('#sDup').onclick=dupSel; $('#sDel').onclick=delSel;
+$('#sEdit').onclick=()=>{ const o=selObj(); if(o&&o.type==='text') editText(o); };
+
+/* ---------------- top bar wiring ---------------- */
+$('#bUndo').onclick=doUndo; $('#bRedo').onclick=doRedo;
+$('#bSnap').onclick=e=>{ S.snap=!S.snap; e.currentTarget.classList.toggle('on',S.snap);
+  toast(S.snap?'Snap on — points lock to the grid, ducts to 45° angles.':'Snap off — free placement.'); };
+$('#bGrid').onclick=e=>{ S.grid=!S.grid; e.currentTarget.classList.toggle('on',S.grid); drawGrid(); };
+$('#bHelp').onclick=()=>$('#help').classList.add('show');
+$('#bHelpX').onclick=()=>$('#help').classList.remove('show');
+$('#help').addEventListener('click', e=>{ if(e.target.id==='help') e.target.classList.remove('show'); });
+
+$('#bNew').onclick=()=>{
+  if(!S.objects.length && !S.underlay) return;
+  if(confirm('Clear the whole board? (You can Ctrl+Z once after, but Save first if you want to keep it.)')){
+    S.undo.push(snapshot());
+    S.objects=[]; S.underlay=null; S.selId=null; S.redo.length=0; autosave(); render();
+  }
+};
+
+$('#bSave').onclick=()=>{
+  const blob = new Blob([snapshot()], {type:'application/json'});
+  dl(URL.createObjectURL(blob), 'mt-sketch.json');
+  toast('Project saved as mt-sketch.json — reopen it anytime with Open.');
+};
+$('#bLoad').onclick=()=>$('#fileJson').click();
+$('#fileJson').addEventListener('change', e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ S.undo.push(snapshot()); restore(r.result); autosave(); toast('Project loaded.'); };
+  r.readAsText(f); e.target.value='';
+});
+
+$('#bUnder').onclick=()=>$('#fileUnder').click();
+$('#fileUnder').addEventListener('change', e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    const img=new Image();
+    img.onload=()=>{
+      const w=S.vb.w*0.8, h=w*img.height/img.width;
+      S.underlay={href:r.result, x:S.vb.x+S.vb.w*0.1, y:S.vb.y+S.vb.h/2-h/2, w, h, op:0.45};
+      commit(); render();
+      toast('Underlay loaded at 45% opacity — sketch on top, adjust with the slider.');
+    };
+    img.src=r.result;
+  };
+  r.readAsDataURL(f); e.target.value='';
+});
+$('#underOp').addEventListener('input', e=>{ if(S.underlay){ S.underlay.op=e.target.value/100; renderUnderlay(); autosave(); } });
+$('#bUnderX').onclick=()=>{ if(S.underlay && confirm('Remove the underlay photo?')){ S.underlay=null; commit(); render(); } };
+
+/* ---------------- PNG export ---------------- */
+$('#bPng').onclick=()=>{
+  selG.innerHTML=''; liveG.innerHTML='';                       // clean overlays
+  const clone = cv.cloneNode(true);
+  clone.setAttribute('width',  S.vb.w);
+  clone.setAttribute('height', S.vb.h);
+  clone.setAttribute('viewBox', `${S.vb.x} ${S.vb.y} ${S.vb.w} ${S.vb.h}`);
+  const src = new XMLSerializer().serializeToString(clone);
+  const img = new Image();
+  img.onload = ()=>{
+    const scale = 2, c = document.createElement('canvas');
+    c.width = S.vb.w*scale; c.height = S.vb.h*scale;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#101c30'; ctx.fillRect(0,0,c.width,c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    c.toBlob(b=>{ dl(URL.createObjectURL(b), 'mt-sketch.png');
+      toast('Exported the current view as mt-sketch.png — zoom/pan first to frame the shot.'); }, 'image/png');
+    renderSel();
+  };
+  img.onerror = ()=>toast('PNG export failed — try again after the underlay finishes loading.');
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+};
+
+function dl(url, name){
+  const a=document.createElement('a'); a.href=url; a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+
+/* ---------------- resize / init ---------------- */
+function fitVB(){
+  const r = cv.getBoundingClientRect();
+  S.vb.h = S.vb.w * r.height / r.width;
+  applyVB(); renderEmpty();
+}
+window.addEventListener('resize', fitVB);
+
+buildDefs(); buildPalette(); buildLayers();
+fitVB();
+try{
+  const saved = localStorage.getItem('mt-sketch-v1');
+  if(saved){ restore(saved); toast('Restored your last board from this browser. New (top left) starts fresh.'); }
+}catch(e){}
+render(); hint();
+</script>
+</body>
+</html>
