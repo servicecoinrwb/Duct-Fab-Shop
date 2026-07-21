@@ -769,6 +769,10 @@ $('#sDup').onclick=dupSel; $('#sDel').onclick=delSel;
 $('#sEdit').onclick=()=>{ const o=selObj(); if(o&&o.type==='text') editText(o); };
 
 /* ---------------- top bar wiring ---------------- */
+document.querySelector('#tools').addEventListener('click', e=>{
+  const b = e.target.closest('[data-tool]'); if(!b) return;
+  setTool(b.dataset.tool);
+});
 $('#bUndo').onclick=doUndo; $('#bRedo').onclick=doRedo;
 $('#bSnap').onclick=e=>{ S.snap=!S.snap; e.currentTarget.classList.toggle('on',S.snap);
   toast(S.snap?'Snap on — points lock to the grid, ducts to 45° angles.':'Snap off — free placement.'); };
